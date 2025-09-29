@@ -1,0 +1,32 @@
+[
+    {
+        "title": "UN Office Cleaning Services",
+        "score": 91,
+        "deadline": "2025-08-06",
+        "sector": "Facilities Management",
+        "description": "UN is requesting qualified vendors for sanitation in Abuja.",
+        "link": "https://tender.ng/un-cleaning",
+        "eoi": "../eois/UN_Office_Cleaning_Services.docx",
+        "status": "Draft"
+    },
+    {
+        "title": "Building Maintenance \u2013 Zaria Campus",
+        "score": 94,
+        "deadline": "2025-08-18",
+        "link": "https://example.com/tenders/zaria-maintenance",
+        "sector": "Education",
+        "description": "Annual maintenance contract for classroom blocks, hostels, and offices.",
+        "eoi": "../eois/Building_Maintenance_\u2013_Zaria_Campus.docx",
+        "status": "Pending"
+    },
+    {
+        "title": "HVAC Upgrade Project \u2013 Enugu State",
+        "score": 75,
+        "deadline": "2025-08-25",
+        "link": "https://example.com/tenders/enugu-hvac",
+        "sector": "Energy",
+        "description": "Supply and installation of HVAC systems in state administrative buildings.",
+        "eoi": "../eois/HVAC_Upgrade_Project_\u2013_Enugu_State.docx",
+        "status": "Pending"
+    }
+]
