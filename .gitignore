@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+
+# Virtual environments
+venv/
+.venv/
+tfml-agent-env/
+
+# Logs / Large files
+logs/*.log
+logs/*.csv
+logs/*.parquet
+eois/*.docx
+eois/*.pdf
