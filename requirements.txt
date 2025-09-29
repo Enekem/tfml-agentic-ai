@@ -3,4 +3,4 @@ pandas
 altair
 python-docx
 requests
-openai
+Pillow
