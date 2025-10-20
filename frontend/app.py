@@ -14,7 +14,11 @@ import requests  # For external API (placeholder)
 # ======================================
 # PATHS AND CONFIG
 # ======================================
-BASE_DIR = Path(__file__).resolve().parent.parent
+try:
+    BASE_DIR = Path(__file__).resolve().parent
+except NameError:
+    BASE_DIR = Path.cwd()
+
 ASSETS = BASE_DIR / "assets"
 LOGS = BASE_DIR / "logs"
 EOIS = BASE_DIR / "eois"
@@ -25,10 +29,10 @@ EOIS.mkdir(parents=True, exist_ok=True)
 LOGS.mkdir(parents=True, exist_ok=True)
 
 # Theme
-ACCENT = "#E60F18"  # TFML Red
-CARD = "#FFFFFF"    # White for cards
-TEXT = "#000000"    # Black for default text
-MUTED = "#555555"   # Muted gray for secondary text
+ACCENT = "#E60F18"   # TFML Red
+CARD = "#FFFFFF"     # White for cards
+TEXT = "#000000"     # Black for default text
+MUTED = "#555555"    # Muted gray for secondary text
 APP_BG_LIGHT = "#F9F9F9"  # Light gray for app background
 APP_BG_DARK = "#1E1E1E"   # Dark gray for dark mode
 CARD_DARK = "#2A2A2A"     # Darker gray for cards in dark mode
@@ -40,115 +44,152 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# CSS
+# ======================================
+# CSS (FIXES TABS VISIBILITY)
+# ======================================
 st.markdown(f"""
 <style>
-.stApp {{ 
-    background: {APP_BG_LIGHT}; 
-    color: {TEXT}; 
+/* App base */
+.stApp {{
+    background: {APP_BG_LIGHT};
+    color: {TEXT};
 }}
 .block-container {{ padding-top: 1rem; }}
-.header {{ 
-    display:flex; 
-    align-items:center; 
-    gap:14px; 
-    padding: 6px 0 14px 0; 
-    border-bottom:1px solid #ddd; 
+
+/* Header */
+.header {{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding: 6px 0 14px 0;
+    border-bottom:1px solid #ddd;
 }}
-.header .title {{ 
-    font-weight:900; 
-    font-size:26px; 
-    color: {ACCENT}; /* Red for title */
-    letter-spacing:.2px; 
+.header .title {{
+    font-weight:900;
+    font-size:26px;
+    color: {ACCENT};
+    letter-spacing:.2px;
 }}
-.kpi {{ 
-    background: {CARD}; 
-    border: 1px solid #ddd; 
-    border-radius: 14px; 
-    padding: 16px; 
-    color: {TEXT}; 
-    cursor: pointer; 
+
+/* KPI + Cards */
+.kpi {{
+    background: {CARD};
+    border: 1px solid #ddd;
+    border-radius: 14px;
+    padding: 16px;
+    color: {TEXT};
+    cursor: default;
 }}
-.kpi .label {{ 
-    color: {MUTED}; 
-    font-size:.78rem; 
-    text-transform:uppercase; 
-    letter-spacing:1px; 
+.kpi .label {{
+    color: {MUTED};
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:1px;
 }}
-.kpi .value {{ 
-    font-size:1.8rem; 
-    font-weight:800; 
-    color: {ACCENT}; /* Red for KPI values */
+.kpi .value {{
+    font-size:1.8rem;
+    font-weight:800;
+    color: {ACCENT};
 }}
-.card {{ 
-    background: {CARD}; 
-    border:1px solid #ddd; 
-    border-radius: 14px; 
-    padding: 16px; 
-    color: {TEXT}; 
+.card {{
+    background: {CARD};
+    border:1px solid #ddd;
+    border-radius: 14px;
+    padding: 16px;
+    color: {TEXT};
 }}
-.pill {{ 
-    display:inline-block; 
-    padding: 2px 10px; 
-    border-radius: 999px; 
-    font-size: .75rem; 
-    font-weight: 700; 
-    background: #eee; 
-    color: {ACCENT}; /* Red for pill text */
-    border: 1px solid {ACCENT}; 
+.pill {{
+    display:inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 700;
+    background: #eee;
+    color: {ACCENT};
+    border: 1px solid {ACCENT};
 }}
-.pill.red {{ 
-    background: rgba(230,15,24,.12); 
-    color: {ACCENT}; 
-    border-color: {ACCENT}; 
+.pill.red {{
+    background: rgba(230,15,24,.12);
+    color: {ACCENT};
+    border-color: {ACCENT};
 }}
-.btn {{ 
-    background: {ACCENT}; 
-    color: #FFFFFF; /* White text on red button */
-    padding: 9px 14px; 
-    border-radius: 10px; 
-    border: none; 
-    font-weight: 700; 
+.btn {{
+    background: {ACCENT};
+    color: #FFFFFF;
+    padding: 9px 14px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 700;
 }}
-.btn.ghost {{ 
-    background: transparent; 
-    border: 1px solid {ACCENT}; 
-    color: {ACCENT}; /* Red text on ghost button */
+.btn.ghost {{
+    background: transparent;
+    border: 1px solid {ACCENT};
+    color: {ACCENT};
 }}
+
+/* ---------- TABS: explicit styling (light + dark) ---------- */
+.stTabs [role="tablist"] {{
+    gap: 8px !important;
+    border-bottom: 0;
+    margin-bottom: 0.5rem;
+}}
+.stTabs [role="tab"] {{
+    padding: 10px 16px !important;
+    border: 1px solid #ddd !important;
+    background: #fff !important;
+    color: #000 !important;
+    border-top-left-radius: 10px !important;
+    border-top-right-radius: 10px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}}
+.stTabs [role="tab"][aria-selected="true"] {{
+    background: {ACCENT} !important;
+    color: #fff !important;
+    border-color: {ACCENT} !important;
+}}
+
 /* Dark Mode */
-.dark-mode .stApp {{ 
-    background: {APP_BG_DARK}; 
-    color: #FFFFFF; 
+.dark-mode .stApp {{
+    background: {APP_BG_DARK};
+    color: #FFFFFF;
 }}
-.dark-mode .kpi {{ 
-    background: {CARD_DARK}; 
-    border-color: #444; 
-    color: #FFFFFF; 
+.dark-mode .kpi {{
+    background: {CARD_DARK};
+    border-color: #444;
+    color: #FFFFFF;
 }}
-.dark-mode .kpi .value {{ 
-    color: #FFFFFF; /* White for KPI values in dark mode */
+.dark-mode .kpi .value {{ color: #FFFFFF; }}
+.dark-mode .card {{
+    background: {CARD_DARK};
+    border-color: #444;
+    color: #FFFFFF;
 }}
-.dark-mode .card {{ 
-    background: {CARD_DARK}; 
-    border-color: #444; 
-    color: #FFFFFF; 
+.dark-mode .header .title {{ color: #FFFFFF; }}
+.dark-mode .pill {{
+    background: #444;
+    color: #FFFFFF;
+    border-color: #FFFFFF;
 }}
-.dark-mode .header .title {{ 
-    color: #FFFFFF; /* White title in dark mode */
+.dark-mode .btn.ghost {{
+    border-color: #FFFFFF;
+    color: #FFFFFF;
 }}
-.dark-mode .pill {{ 
-    background: #444; 
-    color: #FFFFFF; /* White pill text in dark mode */
-    border-color: #FFFFFF; 
+.dark-mode .stTabs [role="tab"] {{
+    background: {CARD_DARK} !important;
+    border-color: #444 !important;
+    color: #fff !important;
 }}
-.dark-mode .btn.ghost {{ 
-    border-color: #FFFFFF; 
-    color: #FFFFFF; /* White ghost button text in dark mode */
+.dark-mode .stTabs [role="tab"][aria-selected="true"] {{
+    background: {ACCENT} !important;
+    border-color: {ACCENT} !important;
+    color: #fff !important;
 }}
-@media (max-width: 600px) {{ 
-    .kpi {{ padding: 10px; }} 
-    .kpi .value {{ font-size: 1.4rem; }} 
-    .header .title {{ font-size: 20px; }} 
+
+@media (max-width: 600px) {{
+    .kpi {{ padding: 10px; }}
+    .kpi .value {{ font-size: 1.4rem; }}
+    .header .title {{ font-size: 20px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -266,7 +307,6 @@ def write_docx(tender, doc_kind="EOI", version=1):
 # AI FEATURES (PLACEHOLDER)
 # ======================================
 def ai_summarize(description):
-    # Placeholder for xAI API call (see https://x.ai/api for details)
     return f"Summary: {description[:100]}..."  # Replace with real AI summary
 
 def process_natural_language_query(query, rows):
@@ -279,11 +319,10 @@ def process_natural_language_query(query, rows):
 # EMAIL INTEGRATION (PLACEHOLDER)
 # ======================================
 def send_email(recipient, subject, body, attachment_path):
-    # Placeholder for email logic (configure SMTP settings)
     st.success(f"Email sent to {recipient} with attachment {attachment_path}")
 
 # ======================================
-# HEADER
+# HEADER (moved to top of page)
 # ======================================
 def logo_header():
     cols = st.columns([0.12, 0.88])
@@ -294,7 +333,10 @@ def logo_header():
             st.write("**TFML**")
     with cols[1]:
         st.markdown(f"<div class='header'><div class='title'>Agentic AI Console</div></div>", unsafe_allow_html=True)
-        st.caption("It’s all about you… • one-click drafting • faster BD • higher win rate", style={"color": ACCENT})
+        st.markdown(f"<span style='color:{ACCENT};opacity:.9;'>It’s all about you… • one-click drafting • faster BD • higher win rate</span>", unsafe_allow_html=True)
+
+# ---------- Render header BEFORE tabs ----------
+logo_header()
 
 # Load Data
 rows = load_rows()
@@ -309,10 +351,8 @@ for r in rows:
         except ValueError:
             st.error(f"Invalid deadline format for tender '{r['title']}'")
 
-# Tabs
-tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(
-    ["Dashboard", "Tenders", "Drafts", "Settings"]
-)
+# Tabs (labels now styled by CSS above)
+tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(["Dashboard", "Tenders", "Drafts", "Settings"])
 
 # ======================================
 # DASHBOARD
@@ -328,41 +368,27 @@ with tab_dash:
     drafts = sum(1 for r in rows if r.get("status") == "Draft")
     submitted = sum(1 for r in rows if r.get("status") in ("Submitted", "Pending"))
 
-    # Interactive KPIs
     c1, c2, c3, c4 = st.columns(4)
-    for c, label, val, sub, key, filter_key in (
-        (c1, "Open tenders", total, "All active notices", "total_kpi", "all"),
-        (c2, "Due in 7 days", due7, "Deadline pressure", "due7_kpi", "due7"),
-        (c3, "Drafts ready", drafts, "Awaiting review", "drafts_kpi", "drafts"),
-        (c4, "In flight", submitted, "Submitted or pending", "submitted_kpi", "submitted"),
-    ):
-        with c:
-            if st.button(f"{val}\n{label}", key=key, help=f"Click to filter {label.lower()}"):
-                if filter_key == "due7":
-                    st.session_state["filtered_tenders"] = [
-                        r for r in rows if r.get("deadline") and
-                        datetime.strptime(r["deadline"], "%Y-%m-%d").date() <= (datetime.today().date() + timedelta(days=7))
-                    ]
-                elif filter_key == "drafts":
-                    st.session_state["filtered_tenders"] = [r for r in rows if r.get("status") == "Draft"]
-                elif filter_key == "submitted":
-                    st.session_state["filtered_tenders"] = [r for r in rows if r.get("status") in ("Submitted", "Pending")]
-                else:
-                    st.session_state["filtered_tenders"] = rows
-            st.markdown(f"<div class='kpi'><div class='label'>{label}</div><div class='value'>{val}</div><div class='sub'>{sub}</div></div>", unsafe_allow_html=True)
+    with c1:
+        st.markdown(f"<div class='kpi'><div class='label'>Open tenders</div><div class='value'>{total}</div><div class='sub'>All active notices</div></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{due7}</div><div class='sub'>Deadline pressure</div></div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"<div class='kpi'><div class='label'>Drafts ready</div><div class='value'>{drafts}</div><div class='sub'>Awaiting review</div></div>", unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"<div class='kpi'><div class='label'>In flight</div><div class='value'>{submitted}</div><div class='sub'>Submitted or pending</div></div>", unsafe_allow_html=True)
 
     if rows:
         df = pd.DataFrame(rows)
-        # Sector Bar Chart
+
         st.markdown("##### Tenders by Sector")
         chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            x=alt.X('sector:N', sort='-y', axis=alt.Axis(labelColor=TEXT, title='')),
-            y=alt.Y('count():Q', axis=alt.Axis(labelColor=TEXT, title='Tenders')),
+            x=alt.X('sector:N', sort='-y', axis=alt.Axis(title='')),
+            y=alt.Y('count():Q', axis=alt.Axis(title='Tenders')),
             color=alt.Color('sector:N', scale=alt.Scale(scheme='category10'))
         ).properties(height=260, background='transparent')
         st.altair_chart(chart, use_container_width=True)
 
-        # Status Pie Chart
         st.markdown("##### Tender Status Distribution")
         pie_chart = alt.Chart(df).mark_arc().encode(
             theta=alt.Theta("count():Q", stack=True),
@@ -371,7 +397,6 @@ with tab_dash:
         ).properties(height=260)
         st.altair_chart(pie_chart, use_container_width=True)
 
-        # Deadline Timeline
         st.markdown("##### Tender Deadlines")
         df["deadline"] = pd.to_datetime(df["deadline"], errors='coerce')
         timeline = alt.Chart(df).mark_circle(size=100).encode(
@@ -382,7 +407,6 @@ with tab_dash:
         ).properties(height=300)
         st.altair_chart(timeline, use_container_width=True)
 
-        # Trend Analysis (Placeholder)
         st.markdown("##### Tender Trends")
         trend_data = pd.DataFrame({
             "Month": ["2025-01", "2025-02", "2025-03"],
@@ -401,22 +425,22 @@ with tab_dash:
 # ======================================
 with tab_tenders:
     st.markdown("### Manage Tenders")
-    # Natural Language Query
     query = st.text_input("Ask about tenders (e.g., 'Show tenders due this week')", help="Enter a query to filter tenders")
     filtered_rows = process_natural_language_query(query, rows) if query else rows
 
-    # Search and Filter
     search = st.text_input("Search Tenders", help="Search by tender title")
-    status_filter = st.multiselect("Filter by Status", ["Draft", "Submitted", "Pending"], default=["Draft", "Submitted", "Pending"])
-    sector_filter = st.multiselect("Filter by Sector", list(set(r.get("sector", "") for r in rows)), default=list(set(r.get("sector", "") for r in rows)))
+    all_statuses = ["Draft", "Submitted", "Pending"]
+    status_filter = st.multiselect("Filter by Status", all_statuses, default=all_statuses)
+    sectors = sorted({r.get("sector", "") for r in rows}) or ["Facilities Management", "Construction", "Energy", "Other"]
+    sector_filter = st.multiselect("Filter by Sector", sectors, default=sectors)
+
     filtered_rows = [
         r for r in filtered_rows
-        if search.lower() in r.get("title", "").lower() and
-           r.get("status") in status_filter and
-           r.get("sector") in sector_filter
+        if (search.lower() in r.get("title", "").lower()) and
+           (r.get("status") in status_filter) and
+           (r.get("sector") in sector_filter)
     ]
 
-    # Add Tender Form
     with st.form("add_tender_form"):
         title = st.text_input("Tender Title")
         org = st.text_input("Organization")
@@ -436,7 +460,6 @@ with tab_tenders:
             save_row(tender)
             st.success("Tender added!")
 
-    # Tenders Table
     if filtered_rows:
         df_view = pd.DataFrame(filtered_rows)
         required_cols = ["id", "title", "org", "sector", "deadline", "status", "score", "assignee"]
@@ -450,7 +473,6 @@ with tab_tenders:
             column_config={"score": st.column_config.NumberColumn(format="%.2f")}
         )
 
-        # Detailed View with Expander
         for r in filtered_rows:
             with st.expander(f"{r['title']} (ID: {r['id']})"):
                 st.write(f"**Organization**: {r['org']}")
@@ -475,7 +497,6 @@ with tab_tenders:
     else:
         st.info("No tenders match the filters.")
 
-    # Fetch Tenders from API (Placeholder)
     if st.button("Fetch Tenders from API", help="Fetch tenders from external procurement API"):
         try:
             response = requests.get("https://api.publictenders.com")  # Replace with real API
@@ -537,10 +558,7 @@ with tab_settings:
     st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone", "+234-XXX-XXXX"), help="Phone number for bid office")
     theme = st.selectbox("Theme", ["Light", "Dark"], help="Switch between light and dark themes")
     if theme == "Dark":
-        st.markdown(f"<script>document.body.classList.add('dark-mode');</script>", unsafe_allow_html=True)
+        st.markdown("<script>document.body.classList.add('dark-mode');</script>", unsafe_allow_html=True)
     else:
-        st.markdown(f"<script>document.body.classList.remove('dark-mode');</script>", unsafe_allow_html=True)
+        st.markdown("<script>document.body.classList.remove('dark-mode');</script>", unsafe_allow_html=True)
     st.caption("Changes save automatically when generating drafts.")
-
-# Initial Header
-logo_header()
