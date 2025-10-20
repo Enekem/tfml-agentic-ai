@@ -327,18 +327,27 @@ def logo_header():
 logo_header()
 
 # ======================================
-# LOAD DATA + NOTIFICATIONS
 # ======================================
-rows = load_rows()
+# LOAD DATA + NOTIFICATIONS (FIXED)
+# ======================================
+def _safe_date(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
 
-for r in rows:
-    if r.get("deadline"):
-        try:
-            deadline = datetime.strptime(r["deadline"], "%Y-%m-%d").date()
-            if deadline <= (datetime.today().date() + timedelta(days=3)):
-                st.warning(f"Tender '{r['title']}' is due on {r['deadline']}!", key=f"warn_{r['id']}")
-        except ValueError:
-            st.error(f"Invalid deadline format for tender '{r['title']}'")
+def render_deadline_notices(rows, days=3):
+    """Show warnings for tenders due within a given number of days."""
+    today = datetime.today().date()
+    soon = today + timedelta(days=days)
+    for r in rows:
+        d = _safe_date(r.get("deadline"))
+        if d and d <= soon:
+            title = r.get("title", "Untitled")
+            st.warning(f"⚠️ Tender '{title}' is due on {d.strftime('%Y-%m-%d')}!")
+
+rows = load_rows()
+render_deadline_notices(rows, days=3)
 
 # ======================================
 # DASHBOARD METRICS HELPERS
