@@ -25,10 +25,13 @@ EOIS.mkdir(parents=True, exist_ok=True)
 LOGS.mkdir(parents=True, exist_ok=True)
 
 # Theme
-ACCENT = "#E60F18"
-CARD = "#F5F5F5"
-TEXT = "#000000"
-MUTED = "#555555"
+ACCENT = "#E60F18"  # TFML Red
+CARD = "#FFFFFF"    # White for cards
+TEXT = "#000000"    # Black for default text
+MUTED = "#555555"   # Muted gray for secondary text
+APP_BG_LIGHT = "#F9F9F9"  # Light gray for app background
+APP_BG_DARK = "#1E1E1E"   # Dark gray for dark mode
+CARD_DARK = "#2A2A2A"     # Darker gray for cards in dark mode
 
 st.set_page_config(
     page_title="TFML Agentic AI — Luxe Console",
@@ -40,18 +43,108 @@ st.set_page_config(
 # CSS
 st.markdown(f"""
 <style>
-.stApp {{ background: #FFFFFF; }}
+.stApp {{ 
+    background: {APP_BG_LIGHT}; 
+    color: {TEXT}; 
+}}
 .block-container {{ padding-top: 1rem; }}
-.header {{ display:flex; align-items:center; gap:14px; padding: 6px 0 14px 0; border-bottom:1px solid #ddd; }}
-.header .title {{ font-weight:900; font-size:26px; color:{TEXT}; letter-spacing:.2px; }}
-.kpi {{ background: linear-gradient(180deg, #FFFFFF 0%, {CARD} 100%); border: 1px solid #ddd; border-radius: 14px; padding: 16px; color: {TEXT}; cursor: pointer; }}
-.kpi .label {{ color:{MUTED}; font-size:.78rem; text-transform:uppercase; letter-spacing:1px; }}
-.kpi .value {{ font-size:1.8rem; font-weight:800; }}
-.card {{ background: {CARD}; border:1px solid #ddd; border-radius: 14px; padding: 16px; }}
-.pill {{ display:inline-block; padding: 2px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: #eee; color: #333; border: 1px solid #ccc; }}
-.pill.red {{ background: rgba(230,15,24,.12); color: {ACCENT}; border-color: {ACCENT}; }}
-.btn {{ background:{ACCENT}; color:#fff; padding:9px 14px; border-radius:10px; border:none; font-weight:700; }}
-.btn.ghost {{ background:transparent; border:1px solid #ccc; color:{TEXT}; }}
+.header {{ 
+    display:flex; 
+    align-items:center; 
+    gap:14px; 
+    padding: 6px 0 14px 0; 
+    border-bottom:1px solid #ddd; 
+}}
+.header .title {{ 
+    font-weight:900; 
+    font-size:26px; 
+    color: {ACCENT}; /* Red for title */
+    letter-spacing:.2px; 
+}}
+.kpi {{ 
+    background: {CARD}; 
+    border: 1px solid #ddd; 
+    border-radius: 14px; 
+    padding: 16px; 
+    color: {TEXT}; 
+    cursor: pointer; 
+}}
+.kpi .label {{ 
+    color: {MUTED}; 
+    font-size:.78rem; 
+    text-transform:uppercase; 
+    letter-spacing:1px; 
+}}
+.kpi .value {{ 
+    font-size:1.8rem; 
+    font-weight:800; 
+    color: {ACCENT}; /* Red for KPI values */
+}}
+.card {{ 
+    background: {CARD}; 
+    border:1px solid #ddd; 
+    border-radius: 14px; 
+    padding: 16px; 
+    color: {TEXT}; 
+}}
+.pill {{ 
+    display:inline-block; 
+    padding: 2px 10px; 
+    border-radius: 999px; 
+    font-size: .75rem; 
+    font-weight: 700; 
+    background: #eee; 
+    color: {ACCENT}; /* Red for pill text */
+    border: 1px solid {ACCENT}; 
+}}
+.pill.red {{ 
+    background: rgba(230,15,24,.12); 
+    color: {ACCENT}; 
+    border-color: {ACCENT}; 
+}}
+.btn {{ 
+    background: {ACCENT}; 
+    color: #FFFFFF; /* White text on red button */
+    padding: 9px 14px; 
+    border-radius: 10px; 
+    border: none; 
+    font-weight: 700; 
+}}
+.btn.ghost {{ 
+    background: transparent; 
+    border: 1px solid {ACCENT}; 
+    color: {ACCENT}; /* Red text on ghost button */
+}}
+/* Dark Mode */
+.dark-mode .stApp {{ 
+    background: {APP_BG_DARK}; 
+    color: #FFFFFF; 
+}}
+.dark-mode .kpi {{ 
+    background: {CARD_DARK}; 
+    border-color: #444; 
+    color: #FFFFFF; 
+}}
+.dark-mode .kpi .value {{ 
+    color: #FFFFFF; /* White for KPI values in dark mode */
+}}
+.dark-mode .card {{ 
+    background: {CARD_DARK}; 
+    border-color: #444; 
+    color: #FFFFFF; 
+}}
+.dark-mode .header .title {{ 
+    color: #FFFFFF; /* White title in dark mode */
+}}
+.dark-mode .pill {{ 
+    background: #444; 
+    color: #FFFFFF; /* White pill text in dark mode */
+    border-color: #FFFFFF; 
+}}
+.dark-mode .btn.ghost {{ 
+    border-color: #FFFFFF; 
+    color: #FFFFFF; /* White ghost button text in dark mode */
+}}
 @media (max-width: 600px) {{ 
     .kpi {{ padding: 10px; }} 
     .kpi .value {{ font-size: 1.4rem; }} 
@@ -156,7 +249,7 @@ def write_docx(tender, doc_kind="EOI", version=1):
         doc = Document()
         doc.add_heading(f"{doc_kind} Draft (v{version})", level=1)
         body = EOI_TMPL.format(
-            recipient=tender.get("recipient", "Procurement Team"),
+            recipient=tender.get("recipient", st.session_state.get("default_recipient", "Procurement Team")),
             title=tender.get("title", "Untitled"),
             sector_desc=tender.get("sector", "Facilities Management").lower(),
             summary=tender.get("description", "—"),
@@ -201,7 +294,7 @@ def logo_header():
             st.write("**TFML**")
     with cols[1]:
         st.markdown(f"<div class='header'><div class='title'>Agentic AI Console</div></div>", unsafe_allow_html=True)
-        st.caption("It’s all about you… • one-click drafting • faster BD • higher win rate")
+        st.caption("It’s all about you… • one-click drafting • faster BD • higher win rate", style={"color": ACCENT})
 
 # Load Data
 rows = load_rows()
@@ -263,8 +356,8 @@ with tab_dash:
         # Sector Bar Chart
         st.markdown("##### Tenders by Sector")
         chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            x=alt.X('sector:N', sort='-y', axis=alt.Axis(labelColor='black', title='')),
-            y=alt.Y('count():Q', axis=alt.Axis(labelColor='black', title='Tenders')),
+            x=alt.X('sector:N', sort='-y', axis=alt.Axis(labelColor=TEXT, title='')),
+            y=alt.Y('count():Q', axis=alt.Axis(labelColor=TEXT, title='Tenders')),
             color=alt.Color('sector:N', scale=alt.Scale(scheme='category10'))
         ).properties(height=260, background='transparent')
         st.altair_chart(chart, use_container_width=True)
@@ -431,7 +524,7 @@ with tab_drafts:
         st.dataframe(df_lib, use_container_width=True, hide_index=True)
         for draft in lib:
             if st.button(f"Email {draft['File']}", key=f"email_{draft['File']}", help="Send draft via email"):
-                send_email("bids@tfml.ng", f"EOI: {draft['Tender']}", "Please review the attached EOI.", draft["File"])
+                send_email(st.session_state.get("bid_email", "bids@tfml.ng"), f"EOI: {draft['Tender']}", "Please review the attached EOI.", draft['File'])
                 st.success(f"Email sent for {draft['File']}")
 
 # ======================================
@@ -439,18 +532,14 @@ with tab_drafts:
 # ======================================
 with tab_settings:
     st.markdown("### Settings")
-    recipient = st.text_input("Default Recipient", value="Procurement Team", help="Default recipient for EOI drafts")
-    email = st.text_input("Bid Office Email", value="bids@tfml.ng", help="Email for bid office communications")
-    phone = st.text_input("Bid Office Phone", value="+234-XXX-XXXX", help="Phone number for bid office")
+    st.session_state["default_recipient"] = st.text_input("Default Recipient", value=st.session_state.get("default_recipient", "Procurement Team"), help="Default recipient for EOI drafts")
+    st.session_state["bid_email"] = st.text_input("Bid Office Email", value=st.session_state.get("bid_email", "bids@tfml.ng"), help="Email for bid office communications")
+    st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone", "+234-XXX-XXXX"), help="Phone number for bid office")
     theme = st.selectbox("Theme", ["Light", "Dark"], help="Switch between light and dark themes")
     if theme == "Dark":
-        st.markdown("""
-        <style>
-        .stApp { background: #1E1E1E; color: #FFFFFF; }
-        .kpi { background: #2A2A2A; border-color: #444; }
-        .card { background: #2A2A2A; border-color: #444; }
-        </style>
-        """, unsafe_allow_html=True)
+        st.markdown(f"<script>document.body.classList.add('dark-mode');</script>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<script>document.body.classList.remove('dark-mode');</script>", unsafe_allow_html=True)
     st.caption("Changes save automatically when generating drafts.")
 
 # Initial Header
