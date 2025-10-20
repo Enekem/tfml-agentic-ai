@@ -1,3 +1,11 @@
+# TFML Agentic AI — Luxe Console (Updated Full App)
+# -------------------------------------------------
+# - Fixed tab visibility (light + dark)
+# - Executive dashboard (KPIs, alerts, charts, activity)
+# - Header above tabs
+# - Safer path handling
+# - Expanded statuses: Draft/Submitted/Pending/Awarded/Won/Lost
+
 import os
 import json
 import time
@@ -9,7 +17,7 @@ import pandas as pd
 import altair as alt
 from docx import Document
 from PIL import Image
-import requests  # For external API (placeholder)
+import requests  # Placeholder for external API
 
 # ======================================
 # PATHS AND CONFIG
@@ -29,13 +37,13 @@ EOIS.mkdir(parents=True, exist_ok=True)
 LOGS.mkdir(parents=True, exist_ok=True)
 
 # Theme
-ACCENT = "#E60F18"   # TFML Red
-CARD = "#FFFFFF"     # White for cards
-TEXT = "#000000"     # Black for default text
-MUTED = "#555555"    # Muted gray for secondary text
-APP_BG_LIGHT = "#F9F9F9"  # Light gray for app background
-APP_BG_DARK = "#1E1E1E"   # Dark gray for dark mode
-CARD_DARK = "#2A2A2A"     # Darker gray for cards in dark mode
+ACCENT = "#E60F18"      # TFML Red
+CARD = "#FFFFFF"        # White for cards
+TEXT = "#000000"        # Black text
+MUTED = "#555555"       # Muted gray
+APP_BG_LIGHT = "#F9F9F9"
+APP_BG_DARK = "#1E1E1E"
+CARD_DARK = "#2A2A2A"
 
 st.set_page_config(
     page_title="TFML Agentic AI — Luxe Console",
@@ -45,11 +53,11 @@ st.set_page_config(
 )
 
 # ======================================
-# CSS (FIXES TABS VISIBILITY)
+# CSS (tabs fix + dark mode + cards)
 # ======================================
 st.markdown(f"""
 <style>
-/* App base */
+/* Base */
 .stApp {{
     background: {APP_BG_LIGHT};
     color: {TEXT};
@@ -71,14 +79,13 @@ st.markdown(f"""
     letter-spacing:.2px;
 }}
 
-/* KPI + Cards */
+/* Cards & KPIs */
 .kpi {{
     background: {CARD};
     border: 1px solid #ddd;
     border-radius: 14px;
     padding: 16px;
     color: {TEXT};
-    cursor: default;
 }}
 .kpi .label {{
     color: {MUTED};
@@ -108,26 +115,8 @@ st.markdown(f"""
     color: {ACCENT};
     border: 1px solid {ACCENT};
 }}
-.pill.red {{
-    background: rgba(230,15,24,.12);
-    color: {ACCENT};
-    border-color: {ACCENT};
-}}
-.btn {{
-    background: {ACCENT};
-    color: #FFFFFF;
-    padding: 9px 14px;
-    border-radius: 10px;
-    border: none;
-    font-weight: 700;
-}}
-.btn.ghost {{
-    background: transparent;
-    border: 1px solid {ACCENT};
-    color: {ACCENT};
-}}
 
-/* ---------- TABS: explicit styling (light + dark) ---------- */
+/* Tabs — explicit styling to ensure readability */
 .stTabs [role="tablist"] {{
     gap: 8px !important;
     border-bottom: 0;
@@ -171,10 +160,8 @@ st.markdown(f"""
     color: #FFFFFF;
     border-color: #FFFFFF;
 }}
-.dark-mode .btn.ghost {{
-    border-color: #FFFFFF;
-    color: #FFFFFF;
-}}
+
+/* Tabs in dark mode */
 .dark-mode .stTabs [role="tab"] {{
     background: {CARD_DARK} !important;
     border-color: #444 !important;
@@ -195,7 +182,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ======================================
-# DATABASE LAYER
+# DATABASE
 # ======================================
 def init_db():
     conn = sqlite3.connect(TENDERS_DB)
@@ -226,7 +213,8 @@ def load_rows():
             {
                 "id": r[0], "title": r[1], "org": r[2], "sector": r[3],
                 "deadline": r[4], "description": r[5], "status": r[6],
-                "score": r[7], "assignee": r[8], "drafts": json.loads(r[9]) if r[9] else []
+                "score": r[7], "assignee": r[8],
+                "drafts": json.loads(r[9]) if r[9] else []
             }
             for r in c.fetchall()
         ]
@@ -263,11 +251,11 @@ def delete_row(tender_id):
     except Exception as e:
         st.error(f"Error deleting tender: {e}")
 
-# Initialize database
+# Initialize DB
 init_db()
 
 # ======================================
-# DOCUMENT GENERATION
+# DOC GENERATION
 # ======================================
 EOI_TMPL = """Dear {recipient},
 
@@ -304,10 +292,10 @@ def write_docx(tender, doc_kind="EOI", version=1):
         return None
 
 # ======================================
-# AI FEATURES (PLACEHOLDER)
+# AI PLACEHOLDER
 # ======================================
 def ai_summarize(description):
-    return f"Summary: {description[:100]}..."  # Replace with real AI summary
+    return f"Summary: {description[:100]}..."  # Replace with real AI call later
 
 def process_natural_language_query(query, rows):
     if "due this week" in query.lower():
@@ -316,13 +304,13 @@ def process_natural_language_query(query, rows):
     return rows
 
 # ======================================
-# EMAIL INTEGRATION (PLACEHOLDER)
+# EMAIL PLACEHOLDER
 # ======================================
 def send_email(recipient, subject, body, attachment_path):
     st.success(f"Email sent to {recipient} with attachment {attachment_path}")
 
 # ======================================
-# HEADER (moved to top of page)
+# HEADER
 # ======================================
 def logo_header():
     cols = st.columns([0.12, 0.88])
@@ -335,13 +323,14 @@ def logo_header():
         st.markdown(f"<div class='header'><div class='title'>Agentic AI Console</div></div>", unsafe_allow_html=True)
         st.markdown(f"<span style='color:{ACCENT};opacity:.9;'>It’s all about you… • one-click drafting • faster BD • higher win rate</span>", unsafe_allow_html=True)
 
-# ---------- Render header BEFORE tabs ----------
+# Render header BEFORE tabs
 logo_header()
 
-# Load Data
+# ======================================
+# LOAD DATA + NOTIFICATIONS
+# ======================================
 rows = load_rows()
 
-# Notifications for Upcoming Deadlines
 for r in rows:
     if r.get("deadline"):
         try:
@@ -351,87 +340,231 @@ for r in rows:
         except ValueError:
             st.error(f"Invalid deadline format for tender '{r['title']}'")
 
-# Tabs (labels now styled by CSS above)
+# ======================================
+# DASHBOARD METRICS HELPERS
+# ======================================
+def _safe_date(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+def compute_dashboard_metrics(rows):
+    today = datetime.today().date()
+    in_7 = today + timedelta(days=7)
+    in_3 = today + timedelta(days=3)
+
+    total = len(rows)
+    deadlines = [(_safe_date(r.get("deadline")), r) for r in rows]
+    overdue = [r for d, r in deadlines if d and d < today and r.get("status") not in ("Awarded", "Won", "Lost")]
+    due3 = [r for d, r in deadlines if d and today <= d <= in_3]
+    due7 = [r for d, r in deadlines if d and today <= d <= in_7]
+    drafts = [r for r in rows if r.get("status") == "Draft"]
+    inflight = [r for r in rows if r.get("status") in ("Submitted", "Pending")]
+    awarded = [r for r in rows if r.get("status") in ("Awarded", "Won")]
+    decided = [r for r in rows if r.get("status") in ("Awarded", "Won", "Lost")]
+
+    win_rate = round((len(awarded) / len(decided) * 100.0), 1) if decided else 0.0
+
+    # Assignee workload
+    by_assignee = {}
+    for r in rows:
+        a = (r.get("assignee") or "Unassigned").strip() or "Unassigned"
+        by_assignee[a] = by_assignee.get(a, 0) + 1
+
+    # Upcoming 30-day deadline load
+    next30 = []
+    for d, r in deadlines:
+        if d and today <= d <= (today + timedelta(days=30)):
+            next30.append(d)
+    df_next30 = (
+        pd.Series(next30, name="date")
+        .value_counts()
+        .rename_axis("date")
+        .reset_index(name="tenders")
+        .sort_values("date")
+        if next30 else pd.DataFrame(columns=["date", "tenders"])
+    )
+
+    # Activity feed from drafts
+    feed = []
+    for r in rows:
+        for d in r.get("drafts", []):
+            feed.append({
+                "when": os.path.getmtime(d.get("file")) if d.get("file") and os.path.exists(d["file"]) else time.time(),
+                "tender": r.get("title", "Untitled"),
+                "type": d.get("type", "Doc"),
+                "file": os.path.basename(d.get("file") or ""),
+                "version": d.get("version", 1),
+                "status": r.get("status", "")
+            })
+    feed_df = pd.DataFrame(feed)
+    if not feed_df.empty:
+        feed_df["when"] = pd.to_datetime(feed_df["when"], unit="s")
+        feed_df = feed_df.sort_values("when", ascending=False)
+
+    return {
+        "total": total,
+        "overdue": len(overdue),
+        "due3": len(due3),
+        "due7": len(due7),
+        "drafts": len(drafts),
+        "inflight": len(inflight),
+        "awarded": len(awarded),
+        "win_rate": win_rate,
+        "overdue_list": overdue,
+        "soon_list": sorted([r for r in rows if _safe_date(r.get("deadline"))], key=lambda x: _safe_date(x["deadline"]))[:10],
+        "assignee_counts": by_assignee,
+        "deadline_30": df_next30,
+        "activity": feed_df
+    }
+
+# ======================================
+# TABS
+# ======================================
 tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(["Dashboard", "Tenders", "Drafts", "Settings"])
 
 # ======================================
-# DASHBOARD
+# DASHBOARD (Executive)
 # ======================================
 with tab_dash:
-    total = len(rows)
-    due7 = sum(
-        1 for r in rows
-        if r.get("deadline") and
-           datetime.strptime(r["deadline"], "%Y-%m-%d").date() >= datetime.today().date() and
-           datetime.strptime(r["deadline"], "%Y-%m-%d").date() <= (datetime.today().date() + timedelta(days=7))
-    )
-    drafts = sum(1 for r in rows if r.get("status") == "Draft")
-    submitted = sum(1 for r in rows if r.get("status") in ("Submitted", "Pending"))
+    st.markdown("#### Executive Overview")
 
-    c1, c2, c3, c4 = st.columns(4)
+    m = compute_dashboard_metrics(rows)
+
+    # KPI Row
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
-        st.markdown(f"<div class='kpi'><div class='label'>Open tenders</div><div class='value'>{total}</div><div class='sub'>All active notices</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='kpi'><div class='label'>Total</div><div class='value'>{m['total']}</div><div class='sub'>All notices</div></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{due7}</div><div class='sub'>Deadline pressure</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='kpi'><div class='label'>Overdue</div><div class='value'>{m['overdue']}</div><div class='sub'>Past deadline</div></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown(f"<div class='kpi'><div class='label'>Drafts ready</div><div class='value'>{drafts}</div><div class='sub'>Awaiting review</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='kpi'><div class='label'>Due in 3 days</div><div class='value'>{m['due3']}</div><div class='sub'>Immediate action</div></div>", unsafe_allow_html=True)
     with c4:
-        st.markdown(f"<div class='kpi'><div class='label'>In flight</div><div class='value'>{submitted}</div><div class='sub'>Submitted or pending</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{m['due7']}</div><div class='sub'>Upcoming</div></div>", unsafe_allow_html=True)
+    with c5:
+        st.markdown(f"<div class='kpi'><div class='label'>In Flight</div><div class='value'>{m['inflight']}</div><div class='sub'>Submitted/Pending</div></div>", unsafe_allow_html=True)
+    with c6:
+        st.markdown(f"<div class='kpi'><div class='label'>Win rate</div><div class='value'>{m['win_rate']}%</div><div class='sub'>Awards: {m['awarded']}</div></div>", unsafe_allow_html=True)
 
-    if rows:
-        df = pd.DataFrame(rows)
+    st.markdown("---")
 
-        st.markdown("##### Tenders by Sector")
-        chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            x=alt.X('sector:N', sort='-y', axis=alt.Axis(title='')),
-            y=alt.Y('count():Q', axis=alt.Axis(title='Tenders')),
-            color=alt.Color('sector:N', scale=alt.Scale(scheme='category10'))
-        ).properties(height=260, background='transparent')
-        st.altair_chart(chart, use_container_width=True)
+    left, right = st.columns([0.6, 0.4])
 
-        st.markdown("##### Tender Status Distribution")
-        pie_chart = alt.Chart(df).mark_arc().encode(
-            theta=alt.Theta("count():Q", stack=True),
-            color=alt.Color("status:N", scale=alt.Scale(scheme='category10')),
-            tooltip=["status", "count()"]
-        ).properties(height=260)
-        st.altair_chart(pie_chart, use_container_width=True)
+    with left:
+        if rows:
+            df = pd.DataFrame(rows)
+            df["deadline_dt"] = pd.to_datetime(df["deadline"], errors="coerce")
 
-        st.markdown("##### Tender Deadlines")
-        df["deadline"] = pd.to_datetime(df["deadline"], errors='coerce')
-        timeline = alt.Chart(df).mark_circle(size=100).encode(
-            x=alt.X("deadline:T", title="Deadline"),
-            y=alt.Y("title:N", title="Tender"),
-            color=alt.Color("status:N", scale=alt.Scale(scheme="category10")),
-            tooltip=["title", "deadline", "status"]
-        ).properties(height=300)
-        st.altair_chart(timeline, use_container_width=True)
+            # Sector distribution
+            st.markdown("##### Tenders by Sector")
+            sector_chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X('sector:N', sort='-y', title=''),
+                y=alt.Y('count():Q', title='Tenders'),
+                tooltip=['sector', 'count()'],
+                color=alt.Color('sector:N', scale=alt.Scale(scheme='category10'), legend=None)
+            ).properties(height=220, background='transparent')
+            st.altair_chart(sector_chart, use_container_width=True)
 
-        st.markdown("##### Tender Trends")
-        trend_data = pd.DataFrame({
-            "Month": ["2025-01", "2025-02", "2025-03"],
-            "Tenders": [10, 15, 12],
-            "Wins": [3, 5, 4]
+            # Pipeline status donut
+            st.markdown("##### Pipeline Status")
+            df_status = df.copy()
+            if "status" not in df_status.columns:
+                df_status["status"] = "Draft"
+            donut = alt.Chart(df_status).mark_arc(innerRadius=70).encode(
+                theta=alt.Theta("count():Q"),
+                color=alt.Color("status:N", scale=alt.Scale(scheme='category10')),
+                tooltip=["status", "count()"]
+            ).properties(height=240)
+            st.altair_chart(donut, use_container_width=True)
+
+            # Deadline load (next 30 days)
+            st.markdown("##### Deadline Load (Next 30 Days)")
+            if not m["deadline_30"].empty:
+                area = alt.Chart(m["deadline_30"]).mark_area(opacity=0.6).encode(
+                    x=alt.X("date:T", title="Date"),
+                    y=alt.Y("tenders:Q", title="Count"),
+                    tooltip=["date:T", "tenders:Q"]
+                ).properties(height=220)
+                st.altair_chart(area, use_container_width=True)
+            else:
+                st.info("No deadlines in the next 30 days.")
+        else:
+            st.info("No tenders yet. Add a few to unlock insights.")
+
+    with right:
+        # Smart Alerts
+        st.markdown("##### Smart Alerts")
+        if m["overdue"] > 0:
+            st.error(f"{m['overdue']} tender(s) are overdue. Prioritise these now.")
+        elif m["due3"] > 0:
+            st.warning(f"{m['due3']} tender(s) due in 3 days.")
+        elif m["due7"] > 0:
+            st.warning(f"{m['due7']} tender(s) due in 7 days.")
+        else:
+            st.success("All clear. No urgent deadlines.")
+
+        # Assignee workload
+        st.markdown("##### Workload by Assignee")
+        ass_df = pd.DataFrame([{"Assignee": k, "Tenders": v} for k, v in m["assignee_counts"].items()])
+        if not ass_df.empty:
+            bar = alt.Chart(ass_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X("Assignee:N", sort='-y', title=''),
+                y=alt.Y("Tenders:Q", title="Count"),
+                tooltip=["Assignee", "Tenders"]
+            ).properties(height=220)
+            st.altair_chart(bar, use_container_width=True)
+        else:
+            st.info("No assignments yet.")
+
+        # Top 10 upcoming deadlines
+        st.markdown("##### Top Upcoming Deadlines")
+        soon = []
+        for r in m["soon_list"]:
+            d = _safe_date(r.get("deadline"))
+            soon.append({
+                "Deadline": d.strftime("%Y-%m-%d") if d else "",
+                "Title": r.get("title", ""),
+                "Status": r.get("status", ""),
+                "Assignee": r.get("assignee", "")
+            })
+        if soon:
+            st.dataframe(pd.DataFrame(soon).head(10), use_container_width=True, hide_index=True)
+        else:
+            st.info("No upcoming deadlines found.")
+
+    st.markdown("---")
+
+    # Activity feed
+    st.markdown("#### Activity Feed")
+    if not m["activity"].empty:
+        af = m["activity"][["when", "tender", "type", "version", "file", "status"]].rename(columns={
+            "when": "Time",
+            "tender": "Tender",
+            "type": "Doc",
+            "version": "v",
+            "file": "File",
+            "status": "Status"
         })
-        trend_chart = alt.Chart(trend_data).mark_line().encode(
-            x="Month", y="Tenders", color=alt.value(ACCENT)
-        ).properties(height=200)
-        st.altair_chart(trend_chart, use_container_width=True)
+        st.dataframe(af.head(15), use_container_width=True, hide_index=True)
     else:
-        st.info("No tenders yet.")
+        st.caption("No document activity yet. Generate an EOI to see activity here.")
 
 # ======================================
 # TENDERS
 # ======================================
 with tab_tenders:
     st.markdown("### Manage Tenders")
+
+    # Natural Language Query
     query = st.text_input("Ask about tenders (e.g., 'Show tenders due this week')", help="Enter a query to filter tenders")
     filtered_rows = process_natural_language_query(query, rows) if query else rows
 
+    # Search & Filters
     search = st.text_input("Search Tenders", help="Search by tender title")
-    all_statuses = ["Draft", "Submitted", "Pending"]
-    status_filter = st.multiselect("Filter by Status", all_statuses, default=all_statuses)
-    sectors = sorted({r.get("sector", "") for r in rows}) or ["Facilities Management", "Construction", "Energy", "Other"]
+    all_statuses = ["Draft", "Submitted", "Pending", "Awarded", "Won", "Lost"]
+    status_filter = st.multiselect("Filter by Status", all_statuses, default=["Draft", "Submitted", "Pending"])
+    sectors = sorted({r.get("sector", "") for r in rows if r.get("sector")}) or ["Facilities Management", "Construction", "Energy", "Other"]
     sector_filter = st.multiselect("Filter by Sector", sectors, default=sectors)
 
     filtered_rows = [
@@ -441,13 +574,14 @@ with tab_tenders:
            (r.get("sector") in sector_filter)
     ]
 
+    # Add Tender
     with st.form("add_tender_form"):
         title = st.text_input("Tender Title")
         org = st.text_input("Organization")
         sector = st.selectbox("Sector", ["Facilities Management", "Construction", "Energy", "Other"])
         deadline = st.date_input("Deadline")
         description = st.text_area("Description")
-        status = st.selectbox("Status", ["Draft", "Submitted", "Pending"])
+        status = st.selectbox("Status", all_statuses, index=0)
         assignee = st.text_input("Assignee Email")
         if st.form_submit_button("Add Tender", help="Add a new tender"):
             new_id = max([r.get("id", 0) for r in rows], default=0) + 1
@@ -460,6 +594,7 @@ with tab_tenders:
             save_row(tender)
             st.success("Tender added!")
 
+    # Table + Detail
     if filtered_rows:
         df_view = pd.DataFrame(filtered_rows)
         required_cols = ["id", "title", "org", "sector", "deadline", "status", "score", "assignee"]
@@ -481,22 +616,37 @@ with tab_tenders:
                 st.write(f"**Status**: {r['status']}")
                 st.write(f"**Assignee**: {r['assignee']}")
                 st.write(f"**AI Summary**: {ai_summarize(r['description'])}")
-                if st.button("Generate EOI", key=f"eoi_{r['id']}", help="Generate EOI for this tender"):
-                    with st.spinner("Generating EOI..."):
-                        path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
-                        if path:
-                            r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
-                            save_row(r)
-                            st.success(f"Generated draft: {os.path.basename(path)}")
-                            with open(path, "rb") as f:
-                                st.download_button("📥 Download", f, file_name=os.path.basename(path), key=f"dl_{r['id']}")
-                if st.button("Delete Tender", key=f"del_{r['id']}", help="Delete this tender"):
-                    delete_row(r["id"])
-                    st.success(f"Tender {r['title']} deleted!")
-                    st.experimental_rerun()
+
+                cols_btn = st.columns(3)
+                with cols_btn[0]:
+                    if st.button("Generate EOI", key=f"eoi_{r['id']}", help="Generate EOI for this tender"):
+                        with st.spinner("Generating EOI..."):
+                            path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
+                            if path:
+                                r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
+                                save_row(r)
+                                st.success(f"Generated draft: {os.path.basename(path)}")
+                                with open(path, "rb") as f:
+                                    st.download_button("📥 Download", f, file_name=os.path.basename(path), key=f"dl_{r['id']}")
+                with cols_btn[1]:
+                    if st.button("Delete Tender", key=f"del_{r['id']}", help="Delete this tender"):
+                        delete_row(r["id"])
+                        st.success(f"Tender {r['title']} deleted!")
+                        try:
+                            st.rerun()
+                        except Exception:
+                            st.experimental_rerun()
+                with cols_btn[2]:
+                    # Quick status update
+                    new_status = st.selectbox("Update Status", all_statuses, index=all_statuses.index(r.get("status", "Draft")), key=f"status_{r['id']}")
+                    if new_status != r.get("status"):
+                        r["status"] = new_status
+                        save_row(r)
+                        st.info("Status updated.")
     else:
         st.info("No tenders match the filters.")
 
+    # Fetch from API (placeholder)
     if st.button("Fetch Tenders from API", help="Fetch tenders from external procurement API"):
         try:
             response = requests.get("https://api.publictenders.com")  # Replace with real API
@@ -518,6 +668,8 @@ with tab_tenders:
                     rows.append(tender)
                     save_row(tender)
                 st.success("Tenders fetched from API!")
+            else:
+                st.warning("API did not return 200. Replace with a working endpoint.")
         except Exception as e:
             st.error(f"Error fetching tenders: {e}")
 
