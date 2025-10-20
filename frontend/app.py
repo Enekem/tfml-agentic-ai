@@ -1,15 +1,15 @@
-# TFML Agentic AI — Luxe Console (Updated Full App)
-# -------------------------------------------------
-# - Fixed tab visibility (light + dark)
-# - Executive dashboard (KPIs, alerts, charts, activity)
-# - Header above tabs
-# - Safer path handling
-# - Expanded statuses: Draft/Submitted/Pending/Awarded/Won/Lost
+# TFML Agentic AI — Luxe Console (Full App with Upgraded Tenders + Seeded EOIs)
+# -----------------------------------------------------------------------------
+# - Tabs visibility fixed (light + dark)
+# - Executive Dashboard unchanged (already improved previously)
+# - Tenders page overhauled: Filters, List/Kanban/Calendar, bulk actions, inline actions
+# - Seeder: 6 placeholder tenders + auto-generated EOIs
+# - Safe notices (no key= on status messages)
 
 import os
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 import sqlite3
 import streamlit as st
@@ -295,13 +295,106 @@ def write_docx(tender, doc_kind="EOI", version=1):
 # AI PLACEHOLDER
 # ======================================
 def ai_summarize(description):
-    return f"Summary: {description[:100]}..."  # Replace with real AI call later
+    return f"Summary: {description[:180]}..."  # Replace with real AI call later
 
-def process_natural_language_query(query, rows):
-    if "due this week" in query.lower():
-        return [r for r in rows if r.get("deadline") and
-                datetime.strptime(r["deadline"], "%Y-%m-%d").date() <= (datetime.today().date() + timedelta(days=7))]
-    return rows
+# ======================================
+# UTILITIES
+# ======================================
+def _safe_date(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+# ======================================
+# SEEDER (6 placeholder tenders + generated EOIs)
+# ======================================
+def seed_sample_data_if_empty():
+    rows_now = load_rows()
+    if rows_now:
+        return rows_now
+
+    today = date.today()
+    samples = [
+        {
+            "title": "IFMA Abuja Secretariat FM Services",
+            "org": "IFMA Nigeria",
+            "sector": "Facilities Management",
+            "deadline": (today + timedelta(days=6)).strftime("%Y-%m-%d"),
+            "description": "Provision of integrated FM services (hard + soft) for IFMA Secretariat building in Abuja, including planned preventive maintenance, SLA reporting, and helpdesk.",
+            "status": "Draft",
+            "assignee": "bids@tfml.ng",
+        },
+        {
+            "title": "AATC HQ Janitorial & Waste Management",
+            "org": "Afreximbank AATC",
+            "sector": "Facilities Management",
+            "deadline": (today + timedelta(days=12)).strftime("%Y-%m-%d"),
+            "description": "Comprehensive janitorial, pest control, and waste management services for AATC HQ office complex with quarterly deep-clean and ISO-aligned documentation.",
+            "status": "Submitted",
+            "assignee": "enoch@tfml.ng",
+        },
+        {
+            "title": "Wuse District Streetlighting Retrofit",
+            "org": "FCTA",
+            "sector": "Energy",
+            "deadline": (today + timedelta(days=3)).strftime("%Y-%m-%d"),
+            "description": "LED retrofit and solar hybridization for Wuse district arterial roads, including energy audit and post-implementation M&V.",
+            "status": "Pending",
+            "assignee": "femi@tfml.ng",
+        },
+        {
+            "title": "MTN Regional Hub M&E Maintenance",
+            "org": "MTN Nigeria",
+            "sector": "Construction",
+            "deadline": (today + timedelta(days=20)).strftime("%Y-%m-%d"),
+            "description": "HVAC, power distribution, fire systems and generator maintenance for MTN regional hub; 24/7 response; CMMS-based reporting.",
+            "status": "Draft",
+            "assignee": "greg@tfml.ng",
+        },
+        {
+            "title": "Airport Concourse Cleaning & Consumables",
+            "org": "FAAN",
+            "sector": "Facilities Management",
+            "deadline": (today + timedelta(days=9)).strftime("%Y-%m-%d"),
+            "description": "Terminal concourse cleaning, restrooms, and traveler touchpoints with IoT counters and predictive replenishment for consumables.",
+            "status": "Submitted",
+            "assignee": "bids@tfml.ng",
+        },
+        {
+            "title": "Data Centre Critical Environment FM",
+            "org": "NIBSS",
+            "sector": "Facilities Management",
+            "deadline": (today + timedelta(days=1)).strftime("%Y-%m-%d"),
+            "description": "Tier-III data centre operations: chilled water, precision cooling, UPS, fire suppression; 15-min incident response; trained critical environment techs.",
+            "status": "Draft",
+            "assignee": "ops@tfml.ng",
+        },
+    ]
+
+    rows_seeded = []
+    for i, s in enumerate(samples, start=1):
+        tender = {
+            "id": i,
+            "title": s["title"],
+            "org": s["org"],
+            "sector": s["sector"],
+            "deadline": s["deadline"],
+            "description": s["description"],
+            "status": s["status"],
+            "score": 0.0,
+            "assignee": s["assignee"],
+            "drafts": []
+        }
+        save_row(tender)
+        # Generate 1 EOI draft for each seeded tender to give 'real' feel
+        path = write_docx(tender, "EOI", version=1)
+        if path:
+            tender["drafts"] = [{"type": "EOI", "file": path, "version": 1}]
+            save_row(tender)
+        rows_seeded.append(tender)
+
+    return load_rows()
 
 # ======================================
 # EMAIL PLACEHOLDER
@@ -327,17 +420,11 @@ def logo_header():
 logo_header()
 
 # ======================================
+# LOAD DATA + NOTICES
 # ======================================
-# LOAD DATA + NOTIFICATIONS (FIXED)
-# ======================================
-def _safe_date(s):
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
+rows = seed_sample_data_if_empty()
 
 def render_deadline_notices(rows, days=3):
-    """Show warnings for tenders due within a given number of days."""
     today = datetime.today().date()
     soon = today + timedelta(days=days)
     for r in rows:
@@ -346,18 +433,11 @@ def render_deadline_notices(rows, days=3):
             title = r.get("title", "Untitled")
             st.warning(f"⚠️ Tender '{title}' is due on {d.strftime('%Y-%m-%d')}!")
 
-rows = load_rows()
 render_deadline_notices(rows, days=3)
 
 # ======================================
-# DASHBOARD METRICS HELPERS
+# DASHBOARD HELPERS (unchanged from your improved version)
 # ======================================
-def _safe_date(s):
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
 def compute_dashboard_metrics(rows):
     today = datetime.today().date()
     in_7 = today + timedelta(days=7)
@@ -434,14 +514,12 @@ def compute_dashboard_metrics(rows):
 tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(["Dashboard", "Tenders", "Drafts", "Settings"])
 
 # ======================================
-# DASHBOARD (Executive)
+# DASHBOARD (kept from your improved version)
 # ======================================
 with tab_dash:
     st.markdown("#### Executive Overview")
-
     m = compute_dashboard_metrics(rows)
 
-    # KPI Row
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         st.markdown(f"<div class='kpi'><div class='label'>Total</div><div class='value'>{m['total']}</div><div class='sub'>All notices</div></div>", unsafe_allow_html=True)
@@ -465,7 +543,6 @@ with tab_dash:
             df = pd.DataFrame(rows)
             df["deadline_dt"] = pd.to_datetime(df["deadline"], errors="coerce")
 
-            # Sector distribution
             st.markdown("##### Tenders by Sector")
             sector_chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
                 x=alt.X('sector:N', sort='-y', title=''),
@@ -475,7 +552,6 @@ with tab_dash:
             ).properties(height=220, background='transparent')
             st.altair_chart(sector_chart, use_container_width=True)
 
-            # Pipeline status donut
             st.markdown("##### Pipeline Status")
             df_status = df.copy()
             if "status" not in df_status.columns:
@@ -487,10 +563,9 @@ with tab_dash:
             ).properties(height=240)
             st.altair_chart(donut, use_container_width=True)
 
-            # Deadline load (next 30 days)
             st.markdown("##### Deadline Load (Next 30 Days)")
-            if not m["deadline_30"].empty:
-                area = alt.Chart(m["deadline_30"]).mark_area(opacity=0.6).encode(
+            if not compute_dashboard_metrics(rows)["deadline_30"].empty:
+                area = alt.Chart(compute_dashboard_metrics(rows)["deadline_30"]).mark_area(opacity=0.6).encode(
                     x=alt.X("date:T", title="Date"),
                     y=alt.Y("tenders:Q", title="Count"),
                     tooltip=["date:T", "tenders:Q"]
@@ -502,7 +577,6 @@ with tab_dash:
             st.info("No tenders yet. Add a few to unlock insights.")
 
     with right:
-        # Smart Alerts
         st.markdown("##### Smart Alerts")
         if m["overdue"] > 0:
             st.error(f"{m['overdue']} tender(s) are overdue. Prioritise these now.")
@@ -513,7 +587,6 @@ with tab_dash:
         else:
             st.success("All clear. No urgent deadlines.")
 
-        # Assignee workload
         st.markdown("##### Workload by Assignee")
         ass_df = pd.DataFrame([{"Assignee": k, "Tenders": v} for k, v in m["assignee_counts"].items()])
         if not ass_df.empty:
@@ -526,7 +599,6 @@ with tab_dash:
         else:
             st.info("No assignments yet.")
 
-        # Top 10 upcoming deadlines
         st.markdown("##### Top Upcoming Deadlines")
         soon = []
         for r in m["soon_list"]:
@@ -544,7 +616,6 @@ with tab_dash:
 
     st.markdown("---")
 
-    # Activity feed
     st.markdown("#### Activity Feed")
     if not m["activity"].empty:
         af = m["activity"][["when", "tender", "type", "version", "file", "status"]].rename(columns={
@@ -560,127 +631,251 @@ with tab_dash:
         st.caption("No document activity yet. Generate an EOI to see activity here.")
 
 # ======================================
-# TENDERS
+# TENDERS (Overhauled)
 # ======================================
 with tab_tenders:
     st.markdown("### Manage Tenders")
 
-    # Natural Language Query
-    query = st.text_input("Ask about tenders (e.g., 'Show tenders due this week')", help="Enter a query to filter tenders")
-    filtered_rows = process_natural_language_query(query, rows) if query else rows
+    # ---------- Filters Bar ----------
+    colf1, colf2, colf3, colf4 = st.columns([0.35, 0.2, 0.25, 0.2])
+    with colf1:
+        search = st.text_input("Search title or buyer", placeholder="e.g., 'airport' or 'FAAN'")
+    with colf2:
+        all_statuses = ["Draft", "Submitted", "Pending", "Awarded", "Won", "Lost"]
+        status_filter = st.multiselect("Status", all_statuses, default=["Draft", "Submitted", "Pending"])
+    with colf3:
+        sectors = sorted({r.get("sector", "") for r in rows if r.get("sector")}) or ["Facilities Management", "Construction", "Energy", "Other"]
+        sector_filter = st.multiselect("Sector", sectors, default=sectors)
+    with colf4:
+        today = datetime.today().date()
+        start_default = today - timedelta(days=14)
+        end_default = today + timedelta(days=60)
+        start_date = st.date_input("From", start_default)
+        end_date = st.date_input("To", end_default)
 
-    # Search & Filters
-    search = st.text_input("Search Tenders", help="Search by tender title")
-    all_statuses = ["Draft", "Submitted", "Pending", "Awarded", "Won", "Lost"]
-    status_filter = st.multiselect("Filter by Status", all_statuses, default=["Draft", "Submitted", "Pending"])
-    sectors = sorted({r.get("sector", "") for r in rows if r.get("sector")}) or ["Facilities Management", "Construction", "Energy", "Other"]
-    sector_filter = st.multiselect("Filter by Sector", sectors, default=sectors)
+    # Natural language quick filter
+    nl_query = st.text_input("Ask about tenders (e.g., 'Show tenders due this week')", placeholder="Type a natural language query")
+    def process_natural_language_query(query, rows):
+        if not query:
+            return rows
+        q = query.lower().strip()
+        if "due this week" in q:
+            end = today + timedelta(days=7)
+            return [r for r in rows if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) <= end]
+        if "overdue" in q:
+            return [r for r in rows if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) < today]
+        return rows
 
-    filtered_rows = [
-        r for r in filtered_rows
-        if (search.lower() in r.get("title", "").lower()) and
-           (r.get("status") in status_filter) and
-           (r.get("sector") in sector_filter)
-    ]
+    filtered_rows = process_natural_language_query(nl_query, rows)
 
-    # Add Tender
+    # Apply filters
+    def _match(r):
+        t = (r.get("title","") + " " + r.get("org","")).lower()
+        d = _safe_date(r.get("deadline"))
+        in_range = (d is None) or (start_date <= d <= end_date)
+        return (search.lower() in t) and (r.get("status") in status_filter) and (r.get("sector") in sector_filter) and in_range
+
+    filtered_rows = [r for r in filtered_rows if _match(r)]
+
+    # ---------- Bulk actions ----------
+    st.markdown("#### Bulk Actions")
+    colb1, colb2, colb3, colb4 = st.columns([0.25, 0.25, 0.25, 0.25])
+    with colb1:
+        bulk_status = st.selectbox("Set status for selected", all_statuses, index=0)
+    with colb2:
+        run_bulk_status = st.button("Apply Status to Selected")
+    with colb3:
+        run_bulk_eoi = st.button("Generate EOI for Selected")
+    with colb4:
+        export_csv = st.button("Export Filtered as CSV")
+
+    # Selection model
+    selected_ids = set()
+    # Sub-tabs
+    sub_list, sub_kanban, sub_calendar = st.tabs(["List", "Kanban", "Calendar"])
+
+    # Helper to save selection
+    def checkbox_id(label, tender_id):
+        return st.checkbox(label, key=f"sel_{tender_id}")
+
+    # -------- LIST VIEW --------
+    with sub_list:
+        if filtered_rows:
+            # Stats row
+            by_assignee = {}
+            for r in filtered_rows:
+                a = (r.get("assignee") or "Unassigned").strip() or "Unassigned"
+                by_assignee[a] = by_assignee.get(a, 0) + 1
+            if by_assignee:
+                chips = " ".join([f"<span class='pill'>{a}: {n}</span>" for a, n in by_assignee.items()])
+                st.markdown(chips, unsafe_allow_html=True)
+
+            st.write("")  # spacing
+
+            # Table-like expanders with controls
+            for r in filtered_rows:
+                row_cols = st.columns([0.04, 0.56, 0.2, 0.2])
+                with row_cols[0]:
+                    if checkbox_id("", r["id"]):
+                        selected_ids.add(r["id"])
+                with row_cols[1]:
+                    st.markdown(f"**{r['title']}**  \n_{r['org']}_")
+                with row_cols[2]:
+                    st.markdown(f"**Deadline:** {r['deadline']}  \n**Status:** {r['status']}")
+                with row_cols[3]:
+                    st.markdown(f"**Sector:** {r['sector']}  \n**Assignee:** {r.get('assignee','')}")
+
+                with st.expander("Details / Actions"):
+                    st.write(f"**AI Summary:** {ai_summarize(r.get('description',''))}")
+
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        if st.button("Generate EOI", key=f"eoi_{r['id']}"):
+                            with st.spinner("Generating EOI..."):
+                                path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
+                                if path:
+                                    r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
+                                    save_row(r)
+                                    st.success(f"Generated draft: {os.path.basename(path)}")
+                                    with open(path, "rb") as f:
+                                        st.download_button("📥 Download", f, file_name=os.path.basename(path), key=f"dl_{r['id']}_{len(r['drafts'])}")
+                    with c2:
+                        # Quick status
+                        new_status = st.selectbox("Update Status", all_statuses, index=all_statuses.index(r.get("status","Draft")), key=f"ust_{r['id']}")
+                        if new_status != r.get("status"):
+                            r["status"] = new_status
+                            save_row(r)
+                            st.info("Status updated.")
+                    with c3:
+                        # Quick score
+                        new_score = st.slider("Fit Score", 0.0, 100.0, float(r.get("score") or 0.0), 1.0, key=f"scr_{r['id']}")
+                        if new_score != r.get("score"):
+                            r["score"] = float(new_score)
+                            save_row(r)
+                    with c4:
+                        if st.button("Delete", key=f"del_{r['id']}"):
+                            delete_row(r["id"])
+                            st.success("Tender deleted.")
+                            try:
+                                st.rerun()
+                            except Exception:
+                                st.experimental_rerun()
+        else:
+            st.info("No tenders match the filters.")
+
+    # -------- KANBAN VIEW --------
+    with sub_kanban:
+        cols = st.columns(5)
+        lanes = [
+            ("Draft", cols[0]),
+            ("Submitted", cols[1]),
+            ("Pending", cols[2]),
+            ("Won", cols[3]),
+            ("Lost", cols[4]),
+        ]
+        for status, col in lanes:
+            with col:
+                st.markdown(f"**{status}**")
+                lane_items = [r for r in filtered_rows if r.get("status") == status]
+                if not lane_items:
+                    st.caption("—")
+                for r in lane_items:
+                    st.markdown(
+                        f"<div class='card'><strong>{r['title']}</strong><br>"
+                        f"<span class='pill'>{r['sector']}</span> "
+                        f"<span class='pill'>Due: {r['deadline']}</span><br>"
+                        f"<small>{r.get('org','')}</small></div>",
+                        unsafe_allow_html=True
+                    )
+                    # quick buttons
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("EOI", key=f"kan_eoi_{r['id']}"):
+                            path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
+                            if path:
+                                r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
+                                save_row(r)
+                                st.success("EOI generated.")
+                    with c2:
+                        nxt_opts = [s for s in ["Draft","Submitted","Pending","Won","Lost"] if s != status]
+                        nxt = st.selectbox("Move to", nxt_opts, key=f"kan_mv_{r['id']}")
+                        if st.button("Move", key=f"kan_btn_{r['id']}"):
+                            r["status"] = nxt
+                            save_row(r)
+                            st.info(f"Moved to {nxt}")
+                            try:
+                                st.rerun()
+                            except Exception:
+                                st.experimental_rerun()
+
+    # -------- CALENDAR VIEW --------
+    with sub_calendar:
+        if filtered_rows:
+            dfc = pd.DataFrame(filtered_rows)
+            dfc["deadline_dt"] = pd.to_datetime(dfc["deadline"], errors="coerce")
+            cal = alt.Chart(dfc.dropna(subset=["deadline_dt"])).mark_circle(size=110).encode(
+                x=alt.X("deadline_dt:T", title="Deadline"),
+                y=alt.Y("sector:N", title="Sector"),
+                color=alt.Color("status:N", scale=alt.Scale(scheme="category10")),
+                tooltip=["title", "org", "deadline", "status", "assignee"]
+            ).properties(height=320)
+            st.altair_chart(cal, use_container_width=True)
+        else:
+            st.info("Nothing to plot.")
+
+    # ---------- Execute Bulk Actions ----------
+    if run_bulk_status or run_bulk_eoi or export_csv:
+        # Determine selection from the checkboxes in List view (stored in session)
+        selected_ids = {int(k.split("_")[-1]) for k, v in st.session_state.items() if k.startswith("sel_") and v}
+        if not selected_ids and (run_bulk_status or run_bulk_eoi):
+            st.warning("Select at least one tender in List view first.")
+        else:
+            if run_bulk_status:
+                for r in rows:
+                    if r["id"] in selected_ids:
+                        r["status"] = bulk_status
+                        save_row(r)
+                st.success(f"Updated status to '{bulk_status}' for {len(selected_ids)} tender(s).")
+            if run_bulk_eoi:
+                cnt = 0
+                for r in rows:
+                    if r["id"] in selected_ids:
+                        path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
+                        if path:
+                            r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
+                            save_row(r)
+                            cnt += 1
+                st.success(f"Generated EOIs for {cnt} tender(s).")
+            if export_csv:
+                dfexp = pd.DataFrame(filtered_rows)
+                st.download_button("Download CSV", dfexp.to_csv(index=False).encode("utf-8"), file_name="tenders_filtered.csv", mime="text/csv")
+
+    st.markdown("---")
+
+    # ---------- Add New Tender ----------
+    st.markdown("### Add Tender")
     with st.form("add_tender_form"):
-        title = st.text_input("Tender Title")
-        org = st.text_input("Organization")
-        sector = st.selectbox("Sector", ["Facilities Management", "Construction", "Energy", "Other"])
-        deadline = st.date_input("Deadline")
+        c1, c2 = st.columns(2)
+        with c1:
+            title = st.text_input("Tender Title")
+            org = st.text_input("Organization")
+            sector = st.selectbox("Sector", ["Facilities Management", "Construction", "Energy", "Other"])
+        with c2:
+            deadline_dt = st.date_input("Deadline", value=datetime.today().date() + timedelta(days=14))
+            status = st.selectbox("Status", all_statuses, index=0)
+            assignee = st.text_input("Assignee Email", value="bids@tfml.ng")
         description = st.text_area("Description")
-        status = st.selectbox("Status", all_statuses, index=0)
-        assignee = st.text_input("Assignee Email")
-        if st.form_submit_button("Add Tender", help="Add a new tender"):
+        submit_new = st.form_submit_button("Add Tender")
+        if submit_new:
             new_id = max([r.get("id", 0) for r in rows], default=0) + 1
             tender = {
                 "id": new_id, "title": title, "org": org, "sector": sector,
-                "deadline": deadline.strftime("%Y-%m-%d"), "description": description,
+                "deadline": deadline_dt.strftime("%Y-%m-%d"), "description": description,
                 "status": status, "score": 0.0, "assignee": assignee, "drafts": []
             }
             rows.append(tender)
             save_row(tender)
             st.success("Tender added!")
-
-    # Table + Detail
-    if filtered_rows:
-        df_view = pd.DataFrame(filtered_rows)
-        required_cols = ["id", "title", "org", "sector", "deadline", "status", "score", "assignee"]
-        for c in required_cols:
-            if c not in df_view.columns:
-                df_view[c] = ""
-        st.dataframe(
-            df_view[required_cols],
-            use_container_width=True,
-            hide_index=True,
-            column_config={"score": st.column_config.NumberColumn(format="%.2f")}
-        )
-
-        for r in filtered_rows:
-            with st.expander(f"{r['title']} (ID: {r['id']})"):
-                st.write(f"**Organization**: {r['org']}")
-                st.write(f"**Sector**: {r['sector']}")
-                st.write(f"**Deadline**: {r['deadline']}")
-                st.write(f"**Status**: {r['status']}")
-                st.write(f"**Assignee**: {r['assignee']}")
-                st.write(f"**AI Summary**: {ai_summarize(r['description'])}")
-
-                cols_btn = st.columns(3)
-                with cols_btn[0]:
-                    if st.button("Generate EOI", key=f"eoi_{r['id']}", help="Generate EOI for this tender"):
-                        with st.spinner("Generating EOI..."):
-                            path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
-                            if path:
-                                r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
-                                save_row(r)
-                                st.success(f"Generated draft: {os.path.basename(path)}")
-                                with open(path, "rb") as f:
-                                    st.download_button("📥 Download", f, file_name=os.path.basename(path), key=f"dl_{r['id']}")
-                with cols_btn[1]:
-                    if st.button("Delete Tender", key=f"del_{r['id']}", help="Delete this tender"):
-                        delete_row(r["id"])
-                        st.success(f"Tender {r['title']} deleted!")
-                        try:
-                            st.rerun()
-                        except Exception:
-                            st.experimental_rerun()
-                with cols_btn[2]:
-                    # Quick status update
-                    new_status = st.selectbox("Update Status", all_statuses, index=all_statuses.index(r.get("status", "Draft")), key=f"status_{r['id']}")
-                    if new_status != r.get("status"):
-                        r["status"] = new_status
-                        save_row(r)
-                        st.info("Status updated.")
-    else:
-        st.info("No tenders match the filters.")
-
-    # Fetch from API (placeholder)
-    if st.button("Fetch Tenders from API", help="Fetch tenders from external procurement API"):
-        try:
-            response = requests.get("https://api.publictenders.com")  # Replace with real API
-            if response.status_code == 200:
-                new_tenders = response.json()  # Process API response
-                for t in new_tenders:
-                    tender = {
-                        "id": max([r.get("id", 0) for r in rows], default=0) + 1,
-                        "title": t.get("title", "Untitled"),
-                        "org": t.get("org", "Unknown"),
-                        "sector": t.get("sector", "Other"),
-                        "deadline": t.get("deadline", datetime.today().strftime("%Y-%m-%d")),
-                        "description": t.get("description", ""),
-                        "status": "Draft",
-                        "score": 0.0,
-                        "assignee": "",
-                        "drafts": []
-                    }
-                    rows.append(tender)
-                    save_row(tender)
-                st.success("Tenders fetched from API!")
-            else:
-                st.warning("API did not return 200. Replace with a working endpoint.")
-        except Exception as e:
-            st.error(f"Error fetching tenders: {e}")
 
 # ======================================
 # DRAFTS
@@ -705,8 +900,11 @@ with tab_drafts:
         df_lib = pd.DataFrame(lib)
         st.dataframe(df_lib, use_container_width=True, hide_index=True)
         for draft in lib:
-            if st.button(f"Email {draft['File']}", key=f"email_{draft['File']}", help="Send draft via email"):
-                send_email(st.session_state.get("bid_email", "bids@tfml.ng"), f"EOI: {draft['Tender']}", "Please review the attached EOI.", draft['File'])
+            if st.button(f"Email {draft['File']}", key=f"email_{draft['File']}"):
+                send_email(st.session_state.get("bid_email", "bids@tfml.ng"),
+                           f"EOI: {draft['Tender']}",
+                           "Please review the attached EOI.",
+                           draft['File'])
                 st.success(f"Email sent for {draft['File']}")
 
 # ======================================
@@ -714,10 +912,10 @@ with tab_drafts:
 # ======================================
 with tab_settings:
     st.markdown("### Settings")
-    st.session_state["default_recipient"] = st.text_input("Default Recipient", value=st.session_state.get("default_recipient", "Procurement Team"), help="Default recipient for EOI drafts")
-    st.session_state["bid_email"] = st.text_input("Bid Office Email", value=st.session_state.get("bid_email", "bids@tfml.ng"), help="Email for bid office communications")
-    st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone", "+234-XXX-XXXX"), help="Phone number for bid office")
-    theme = st.selectbox("Theme", ["Light", "Dark"], help="Switch between light and dark themes")
+    st.session_state["default_recipient"] = st.text_input("Default Recipient", value=st.session_state.get("default_recipient", "Procurement Team"))
+    st.session_state["bid_email"] = st.text_input("Bid Office Email", value=st.session_state.get("bid_email", "bids@tfml.ng"))
+    st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone", "+234-XXX-XXXX"))
+    theme = st.selectbox("Theme", ["Light", "Dark"])
     if theme == "Dark":
         st.markdown("<script>document.body.classList.add('dark-mode');</script>", unsafe_allow_html=True)
     else:
