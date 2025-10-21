@@ -1,10 +1,10 @@
-# TFML Agentic AI — Luxe Console (Full App)
-# -----------------------------------------
+# TFML Agentic AI — Luxe Console (Full App + Sources Library)
+# -----------------------------------------------------------
 # - Dashboard: KPIs, alerts, charts, activity
 # - Tenders: Filters + List/Kanban/Calendar + "Generate Draft Response"
 # - Drafts Workspace: list, rich editor, attachments, lifecycle
+# - NEW Sources Library: store scraped/uploaded EOI/Tender/RFP docs (URL or file), link to tenders, download/open
 # - Buttons styled for visibility (light & dark)
-# - No audio control in Drafts (uploader restricted to docs/images only)
 # - 6 seeded tenders with first drafts
 
 import os
@@ -31,11 +31,12 @@ except NameError:
 ASSETS = BASE_DIR / "assets"
 LOGS = BASE_DIR / "logs"
 EOIS = BASE_DIR / "eois"
+SOURCES_DIR = BASE_DIR / "sources"
 TENDERS_DB = LOGS / "tenders.db"
 LOGO_PATH = ASSETS / "tfml_logo.png"
 
-EOIS.mkdir(parents=True, exist_ok=True)
-LOGS.mkdir(parents=True, exist_ok=True)
+for p in (EOIS, LOGS, SOURCES_DIR):
+    p.mkdir(parents=True, exist_ok=True)
 
 # Brand
 ACCENT = "#E60F18"
@@ -130,7 +131,7 @@ form [data-testid="baseButton-primary"]:disabled {{
   border-color: var(--tfml-btn-border) !important;
 }}
 
-/* File uploader: style button and hide media-capture affordances */
+/* File uploader: style button */
 [data-testid="stFileUploaderDropzone"] + div button,
 [data-testid="stFileUploader"] button {{
   background: var(--tfml-btn-bg) !important;
@@ -171,6 +172,21 @@ def init_db():
         score REAL,
         assignee TEXT,
         drafts TEXT
+    )
+    """)
+    # NEW: sources table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        buyer TEXT,
+        type TEXT,            -- EOI | Tender | RFP | Other
+        url TEXT,
+        file TEXT,            -- local path if uploaded
+        tender_id INTEGER,    -- optional link to tenders.id
+        deadline TEXT,        -- YYYY-MM-DD
+        value TEXT,           -- string to avoid locale issues
+        scraped_at TEXT       -- ISO time
     )
     """)
     conn.commit()
@@ -220,6 +236,50 @@ def delete_row(tender_id):
     except Exception as e:
         st.error(f"Error deleting tender: {e}")
 
+# Sources helpers
+def load_sources():
+    try:
+        conn = sqlite3.connect(TENDERS_DB)
+        c = conn.cursor()
+        c.execute("SELECT * FROM sources ORDER BY id DESC")
+        srcs = [{
+            "id": r[0], "title": r[1], "buyer": r[2], "type": r[3],
+            "url": r[4], "file": r[5], "tender_id": r[6],
+            "deadline": r[7], "value": r[8], "scraped_at": r[9]
+        } for r in c.fetchall()]
+        conn.close()
+        return srcs
+    except Exception as e:
+        st.error(f"Error loading sources: {e}")
+        return []
+
+def save_source(source):
+    try:
+        conn = sqlite3.connect(TENDERS_DB)
+        c = conn.cursor()
+        c.execute("""
+        INSERT OR REPLACE INTO sources (id, title, buyer, type, url, file, tender_id, deadline, value, scraped_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            source.get("id"), source.get("title"), source.get("buyer"), source.get("type"),
+            source.get("url"), source.get("file"), source.get("tender_id"),
+            source.get("deadline"), source.get("value"), source.get("scraped_at") or datetime.now().isoformat(timespec="seconds")
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Error saving source: {e}")
+
+def delete_source(source_id):
+    try:
+        conn = sqlite3.connect(TENDERS_DB)
+        c = conn.cursor()
+        c.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Error deleting source: {e}")
+
 init_db()
 
 # ======================================
@@ -255,7 +315,6 @@ def _suggest_email(org: str) -> str:
     return "procurement@buyer.ng"
 
 def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
-    """Generate a DOCX from a draft dict (subject/body) and save under eois/."""
     safe_fn = filename_hint[:60].replace(" ", "_")
     path = EOIS / f"{safe_fn}.docx"
     doc = Document()
@@ -264,7 +323,7 @@ def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
                  f"CC: {draft.get('cc','')}",
                  f"Contract Value (₦): {draft.get('value','')}"):
         doc.add_paragraph(meta)
-    doc.add_paragraph("")  # spacer
+    doc.add_paragraph("")
     body = draft.get("body") or "—"
     for line in body.split("\n"):
         doc.add_paragraph(line)
@@ -275,7 +334,7 @@ def ai_summarize(description):
     return f"Summary: {description[:180]}..."  # placeholder for real LLM
 
 # ======================================
-# SEED 6 SAMPLE TENDERS + FIRST DRAFT
+# SEED 6 SAMPLE TENDERS + FIRST DRAFT (no sources seeded to keep storage clean)
 # ======================================
 def seed_sample_data_if_empty():
     rows_now = load_rows()
@@ -304,12 +363,11 @@ def seed_sample_data_if_empty():
             "description": desc, "status": status, "score": 0.0,
             "assignee": assignee, "drafts": []
         }
-        # Initial draft response
         initial = {
             "id": f"{i}:1",
             "type": "EOI",
             "version": 1,
-            "status": "Draft",          # Draft -> Ready -> Sent -> Submitted
+            "status": "Draft",
             "to": _suggest_email(org),
             "cc": "bids@tfml.ng",
             "subject": f"Expression of Interest — {title}",
@@ -418,29 +476,23 @@ def compute_dashboard_metrics(rows):
     }
 
 # ======================================
-# DRAFT HELPERS
+# DRAFT / SOURCE HELPERS
 # ======================================
 def new_draft_response_for_tender(tender: dict, kind="EOI"):
-    """Create and attach a new draft response with sensible defaults."""
     next_version = (max([d.get("version", 0) for d in tender.get("drafts", [])]) + 1) if tender.get("drafts") else 1
     draft_id = f"{tender['id']}:{next_version}"
     draft = {
-        "id": draft_id,
-        "type": kind,
-        "version": next_version,
-        "status": "Draft",          # Draft -> Ready -> Sent -> Submitted
-        "to": _suggest_email(tender.get("org")),
-        "cc": "bids@tfml.ng",
+        "id": draft_id, "type": kind, "version": next_version, "status": "Draft",
+        "to": _suggest_email(tender.get("org")), "cc": "bids@tfml.ng",
         "subject": f"{'Proposal' if kind!='EOI' else 'Expression of Interest'} — {tender.get('title','')}",
-        "value": "",                # ₦
+        "value": "",
         "body": EOI_TMPL.format(
             recipient="Procurement Team",
             title=tender.get("title","Untitled"),
             sector_desc=tender.get("sector","Facilities Management").lower(),
             summary=tender.get("description","—"),
         ),
-        "attachments": [],
-        "file": "",
+        "attachments": [], "file": "",
         "last_updated": datetime.now().isoformat(timespec="seconds")
     }
     tender["drafts"] = (tender.get("drafts") or []) + [draft]
@@ -454,9 +506,11 @@ def validate_email_list(s: str) -> bool:
     return all(simple.match(e) for e in emails)
 
 # ======================================
-# TABS
+# TABS (added "Sources")
 # ======================================
-tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(["Dashboard", "Tenders", "Drafts", "Settings"])
+tab_dash, tab_tenders, tab_drafts, tab_sources, tab_settings = st.tabs(
+    ["Dashboard", "Tenders", "Drafts", "Sources", "Settings"]
+)
 
 # ======================================
 # DASHBOARD
@@ -619,6 +673,23 @@ with tab_tenders:
                     st.markdown(f"**Deadline:** {r['deadline']}  \n**Status:** {r['status']}")
                 with row_cols[2]:
                     st.markdown(f"**Sector:** {r['sector']}  \n**Assignee:** {r.get('assignee','')}")
+
+                # Linked sources preview for this tender
+                linked = [s for s in load_sources() if s.get("tender_id")==r["id"]]
+                if linked:
+                    st.caption("Linked sources:")
+                    for s in linked:
+                        colx, coly, colz = st.columns([0.55, 0.25, 0.2])
+                        with colx:
+                            st.markdown(f"• **{s['type']}** — {s['title']}  \n_{s.get('buyer','')}_")
+                        with coly:
+                            if s.get("url"):
+                                st.link_button("Open URL", s["url"])
+                        with colz:
+                            fpath = s.get("file")
+                            if fpath and os.path.exists(fpath):
+                                with open(fpath, "rb") as fh:
+                                    st.download_button("Download", fh, file_name=Path(fpath).name, key=f"dl_src_{s['id']}_{r['id']}")
 
                 with st.expander("Details / Actions"):
                     st.write(f"**AI Summary:** {ai_summarize(r.get('description',''))}")
@@ -786,7 +857,25 @@ with tab_drafts:
                     if (d.get("id")==row["DraftID"]) or (d.get("version")==row["Version"]):
                         d_index = idx; d_obj = d; break
 
+            # Also load linked sources for this tender
+            tender_sources = [s for s in load_sources() if s.get("tender_id")==row["TenderID"]]
+
             st.markdown(f"#### Edit Draft — {row['Tender']} (v{row['Version']})")
+            if tender_sources:
+                st.caption("Linked sources for this tender:")
+                for s in tender_sources:
+                    csa, csb, csc = st.columns([0.6, 0.2, 0.2])
+                    with csa:
+                        st.markdown(f"• **{s['type']}** — {s['title']}  \n_{s.get('buyer','')}_  \nDeadline: {s.get('deadline','—')}  •  Value: {s.get('value','')}")
+                    with csb:
+                        if s.get("url"):
+                            st.link_button("Open URL", s["url"], key=f"srcurl_d_{s['id']}")
+                    with csc:
+                        fpath = s.get("file")
+                        if fpath and os.path.exists(fpath):
+                            with open(fpath, "rb") as fh:
+                                st.download_button("Download", fh, file_name=Path(fpath).name, key=f"srcdl_d_{s['id']}")
+
             with st.form("edit_draft_form"):
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -798,13 +887,11 @@ with tab_drafts:
                 with col_b:
                     subject = st.text_input("Subject", value=row["Subject"])
                     draft_type = st.selectbox("Type", ["EOI","Proposal"], index=["EOI","Proposal"].index(row["Type"]))
-                    # Restrict to common doc/image types to avoid audio control
                     attach = st.file_uploader(
                         "Add attachment(s)",
                         accept_multiple_files=True,
                         type=["pdf","doc","docx","ppt","pptx","xls","xlsx","csv","txt","rtf","zip","png","jpg","jpeg"]
                     )
-
                 body = st.text_area("Body", value=row["_body"], height=280)
 
                 save = st.form_submit_button("💾 Save Changes")
@@ -818,7 +905,6 @@ with tab_drafts:
                                 "type": draft_type, "body": body, "status": status,
                                 "last_updated": datetime.now().isoformat(timespec="seconds")
                             })
-                            # Save attachments
                             if attach:
                                 saved = []
                                 for f in attach:
@@ -880,6 +966,163 @@ with tab_drafts:
                         st.warning("Draft deleted.")
                         try: st.rerun()
                         except Exception: st.experimental_rerun()
+
+# ======================================
+# SOURCES LIBRARY (NEW)
+# ======================================
+with tab_sources:
+    st.markdown("### Sources Library (EOI / Tender / RFP)")
+
+    sources = load_sources()
+
+    # Filters
+    colsf1, colsf2, colsf3, colsf4 = st.columns([0.35, 0.2, 0.25, 0.2])
+    with colsf1:
+        qsrc = st.text_input("Search (Title / Buyer)")
+    with colsf2:
+        typ_opts = ["EOI","Tender","RFP","Other"]
+        f_type = st.multiselect("Type", typ_opts, default=typ_opts)
+    with colsf3:
+        buyers = sorted({s.get("buyer","") for s in sources if s.get("buyer")}) or []
+        f_buyer = st.multiselect("Buyer", buyers, default=buyers)
+    with colsf4:
+        tender_choices = {r["title"]: r["id"] for r in rows}
+        f_tender = st.multiselect("Linked Tender", list(tender_choices.keys()), default=[])
+
+    def _match_src(s):
+        txt = f"{s.get('title','')} {s.get('buyer','')}".lower()
+        if qsrc and qsrc.lower() not in txt: return False
+        if s.get("type","Other") not in f_type: return False
+        if f_buyer and s.get("buyer") not in f_buyer: return False
+        if f_tender:
+            ok = False
+            for name in f_tender:
+                if s.get("tender_id")==tender_choices[name]:
+                    ok = True
+            if not ok: return False
+        return True
+
+    view_sources = [s for s in sources if _match_src(s)] if sources else []
+
+    # Table
+    if view_sources:
+        df_src = pd.DataFrame(view_sources)[["id","title","buyer","type","deadline","value","tender_id","url","file","scraped_at"]]
+        df_src = df_src.rename(columns={
+            "id":"ID","title":"Title","buyer":"Buyer","type":"Type","deadline":"Deadline",
+            "value":"Value(₦)", "tender_id":"TenderID","url":"URL","file":"File","scraped_at":"Added"
+        })
+        st.dataframe(df_src, use_container_width=True, hide_index=True)
+    else:
+        st.info("No sources found yet. Add one below.")
+
+    st.markdown("---")
+    st.markdown("#### Add / Link a Source")
+
+    with st.form("add_source_form"):
+        colas, colbs = st.columns(2)
+        with colas:
+            s_title = st.text_input("Title")
+            s_buyer = st.text_input("Buyer / Procuring Entity")
+            s_type = st.selectbox("Type", ["EOI","Tender","RFP","Other"])
+            s_deadline = st.date_input("Deadline (optional)", value=None, format="YYYY-MM-DD") if st.checkbox("Set deadline?") else None
+        with colbs:
+            tendernames = ["— Not linked —"] + [r["title"] for r in rows]
+            s_tender_name = st.selectbox("Link to Tender", tendernames)
+            s_value = st.text_input("Contract Value (₦)", value="")
+            s_url = st.text_input("Source URL (if any)")
+        s_files = st.file_uploader(
+            "Upload source file(s) (optional)",
+            accept_multiple_files=True,
+            type=["pdf","doc","docx","ppt","pptx","xls","xlsx","csv","txt","rtf","zip","png","jpg","jpeg"]
+        )
+        add_btn = st.form_submit_button("➕ Save Source")
+
+    if add_btn:
+        # Save each uploaded file as its own source row if multiple; else save URL-only record
+        if s_files:
+            for f in s_files:
+                savep = SOURCES_DIR / f.name
+                with open(savep, "wb") as out:
+                    out.write(f.read())
+                src = {
+                    "id": None,
+                    "title": s_title or f.name,
+                    "buyer": s_buyer,
+                    "type": s_type,
+                    "url": s_url or "",
+                    "file": str(savep),
+                    "tender_id": None if s_tender_name == "— Not linked —" else next((r["id"] for r in rows if r["title"] == s_tender_name), None),
+                    "deadline": s_deadline.strftime("%Y-%m-%d") if s_deadline else "",
+                    "value": s_value,
+                    "scraped_at": datetime.now().isoformat(timespec="seconds")
+                }
+                save_source(src)
+            st.success("Source(s) saved.")
+            try: st.rerun()
+            except Exception: st.experimental_rerun()
+        else:
+            # URL-only row
+            src = {
+                "id": None,
+                "title": s_title or (s_url or "Untitled"),
+                "buyer": s_buyer,
+                "type": s_type,
+                "url": s_url or "",
+                "file": "",
+                "tender_id": None if s_tender_name == "— Not linked —" else next((r["id"] for r in rows if r["title"] == s_tender_name), None),
+                "deadline": s_deadline.strftime("%Y-%m-%d") if s_deadline else "",
+                "value": s_value,
+                "scraped_at": datetime.now().isoformat(timespec="seconds")
+            }
+            save_source(src)
+            st.success("Source saved.")
+            try: st.rerun()
+            except Exception: st.experimental_rerun()
+
+    st.markdown("---")
+    st.markdown("#### Manage Sources")
+
+    # Quick actions per source
+    for s in view_sources:
+        with st.expander(f"[{s['type']}] {s['title']}  —  {s.get('buyer','')}"):
+            cc1, cc2, cc3, cc4, cc5 = st.columns([0.25, 0.25, 0.25, 0.15, 0.10])
+            with cc1:
+                # Re-link to a different tender
+                new_link = st.selectbox(
+                    "Linked Tender",
+                    ["— Not linked —"] + [r["title"] for r in rows],
+                    index=(["— Not linked —"] + [r["title"] for r in rows]).index(
+                        next((r["title"] for r in rows if r["id"] == s.get("tender_id")), "— Not linked —")
+                    ),
+                    key=f"relink_{s['id']}"
+                )
+            with cc2:
+                new_deadline = st.text_input("Deadline (YYYY-MM-DD)", value=s.get("deadline",""), key=f"reld_{s['id']}")
+            with cc3:
+                new_value = st.text_input("Value (₦)", value=s.get("value",""), key=f"relv_{s['id']}")
+            with cc4:
+                if s.get("url"):
+                    st.link_button("Open URL", s["url"], key=f"murl_{s['id']}")
+            with cc5:
+                fpath = s.get("file")
+                if fpath and os.path.exists(fpath):
+                    with open(fpath, "rb") as fh:
+                        st.download_button("Download", fh, file_name=Path(fpath).name, key=f"mdown_{s['id']}")
+
+            csave, cdel = st.columns([0.15, 0.1])
+            with csave:
+                if st.button("Save", key=f"save_src_{s['id']}"):
+                    s["tender_id"] = None if new_link == "— Not linked —" else next((r["id"] for r in rows if r["title"] == new_link), None)
+                    s["deadline"] = new_deadline
+                    s["value"] = new_value
+                    save_source(s)
+                    st.success("Source updated.")
+            with cdel:
+                if st.button("Delete", key=f"del_src_{s['id']}"):
+                    delete_source(s["id"])
+                    st.warning("Source deleted.")
+                    try: st.rerun()
+                    except Exception: st.experimental_rerun()
 
 # ======================================
 # SETTINGS
