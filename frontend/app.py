@@ -1,11 +1,11 @@
-# TFML Agentic AI — Luxe Console (Full App + Sources Library)
-# -----------------------------------------------------------
-# - Dashboard: KPIs, alerts, charts, activity
-# - Tenders: Filters + List/Kanban/Calendar + "Generate Draft Response"
-# - Drafts Workspace: list, rich editor, attachments, lifecycle
-# - NEW Sources Library: store scraped/uploaded EOI/Tender/RFP docs (URL or file), link to tenders, download/open
+# TFML Agentic AI — Luxe Console (Full App + Sources URL surfaced)
+# ----------------------------------------------------------------
+# - Dashboard: KPIs, alerts, charts, activity + SOURCE links column
+# - Tenders: List/Kanban/Calendar — SOURCE link always visible per tender
+# - Drafts Workspace: list, editor, linked sources (with URLs)
+# - Sources Library: store scraped/uploaded docs (URL or file), link to tenders
 # - Buttons styled for visibility (light & dark)
-# - 6 seeded tenders with first drafts
+# - 6 seeded tenders + seeded SOURCE URLs
 
 import os
 import re
@@ -174,7 +174,7 @@ def init_db():
         drafts TEXT
     )
     """)
-    # NEW: sources table
+    # Sources table stores original links/files
     c.execute("""
     CREATE TABLE IF NOT EXISTS sources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,11 +182,11 @@ def init_db():
         buyer TEXT,
         type TEXT,            -- EOI | Tender | RFP | Other
         url TEXT,
-        file TEXT,            -- local path if uploaded
-        tender_id INTEGER,    -- optional link to tenders.id
-        deadline TEXT,        -- YYYY-MM-DD
-        value TEXT,           -- string to avoid locale issues
-        scraped_at TEXT       -- ISO time
+        file TEXT,
+        tender_id INTEGER,
+        deadline TEXT,
+        value TEXT,
+        scraped_at TEXT
     )
     """)
     conn.commit()
@@ -263,7 +263,8 @@ def save_source(source):
         """, (
             source.get("id"), source.get("title"), source.get("buyer"), source.get("type"),
             source.get("url"), source.get("file"), source.get("tender_id"),
-            source.get("deadline"), source.get("value"), source.get("scraped_at") or datetime.now().isoformat(timespec="seconds")
+            source.get("deadline"), source.get("value"),
+            source.get("scraped_at") or datetime.now().isoformat(timespec="seconds")
         ))
         conn.commit()
         conn.close()
@@ -331,32 +332,55 @@ def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
     return str(path)
 
 def ai_summarize(description):
-    return f"Summary: {description[:180]}..."  # placeholder for real LLM
+    return f"Summary: {description[:180]}..."  # placeholder
+
+# ------ NEW: primary source URL helper ------
+def primary_source_url(tender_id: int) -> str:
+    """Pick a human-verifiable URL for a tender, if any."""
+    srcs = [s for s in load_sources() if s.get("tender_id") == tender_id]
+    # prefer explicit URLs for EOI/Tender/RFP
+    for t in ("EOI", "Tender", "RFP"):
+        for s in srcs:
+            if (s.get("type") == t) and s.get("url"):
+                return s["url"]
+    # if no typed match, any url
+    for s in srcs:
+        if s.get("url"):
+            return s["url"]
+    return ""  # none
 
 # ======================================
-# SEED 6 SAMPLE TENDERS + FIRST DRAFT (no sources seeded to keep storage clean)
+# SEED 6 SAMPLE TENDERS + FIRST DRAFT + SOURCE URLs
 # ======================================
 def seed_sample_data_if_empty():
     rows_now = load_rows()
-    if rows_now: return rows_now
+    if rows_now:
+        return rows_now
 
     today = date.today()
     samples = [
         ("IFMA Abuja Secretariat FM Services", "IFMA Nigeria", "Facilities Management", 6,
-         "PPP maintenance, SLA reporting & helpdesk for IFMA Secretariat, Abuja.", "Draft", "bids@tfml.ng"),
+         "PPP maintenance, SLA reporting & helpdesk for IFMA Secretariat, Abuja.", "Draft", "bids@tfml.ng",
+         "https://ifma.org.ng/tenders/ifma-secretariat-fm-services"),
         ("AATC HQ Janitorial & Waste Management", "Afreximbank AATC", "Facilities Management", 12,
-         "Janitorial, pest, waste services for AATC HQ; ISO docs & quarterly deep-clean.", "Submitted", "enoch@tfml.ng"),
+         "Janitorial, pest, waste services for AATC HQ; ISO docs & quarterly deep-clean.", "Submitted", "enoch@tfml.ng",
+         "https://afreximbank.com/procurement/aatc-hq-janitorial"),
         ("Wuse District Streetlighting Retrofit", "FCTA", "Energy", 3,
-         "LED retrofit + solar hybridization for Wuse district roads; energy audit + M&V.", "Pending", "femi@tfml.ng"),
+         "LED retrofit + solar hybridization for Wuse district roads; energy audit + M&V.", "Pending", "femi@tfml.ng",
+         "https://fcta.gov.ng/tenders/wuse-streetlighting-retrofit"),
         ("MTN Regional Hub M&E Maintenance", "MTN Nigeria", "Construction", 20,
-         "HVAC, power, fire, gen maintenance + CMMS reporting; 24/7 response.", "Draft", "greg@tfml.ng"),
+         "HVAC, power, fire, gen maintenance + CMMS reporting; 24/7 response.", "Draft", "greg@tfml.ng",
+         "https://www.mtn.ng/suppliers/opportunities/regional-hub-me"),
         ("Airport Concourse Cleaning & Consumables", "FAAN", "Facilities Management", 9,
-         "Terminal cleaning, restrooms, touchpoints; IoT counters & predictive supply.", "Submitted", "bids@tfml.ng"),
+         "Terminal cleaning, restrooms, touchpoints; IoT counters & predictive supply.", "Submitted", "bids@tfml.ng",
+         "https://www.faan.gov.ng/procurement/airport-cleaning"),
         ("Data Centre Critical Environment FM", "NIBSS", "Facilities Management", 1,
-         "Tier-III: chilled water, precision cooling, UPS, suppression; 15-min response.", "Draft", "ops@tfml.ng"),
+         "Tier-III: chilled water, precision cooling, UPS, suppression; 15-min response.", "Draft", "ops@tfml.ng",
+         "https://nibss-plc.com/procurement/data-centre-fm"),
     ]
 
-    for i, (title, org, sector, days_out, desc, status, assignee) in enumerate(samples, start=1):
+    # create tenders + drafts
+    for i, (title, org, sector, days_out, desc, status, assignee, url) in enumerate(samples, start=1):
         tender = {
             "id": i, "title": title, "org": org, "sector": sector,
             "deadline": (today + timedelta(days=days_out)).strftime("%Y-%m-%d"),
@@ -382,6 +406,14 @@ def seed_sample_data_if_empty():
         }
         tender["drafts"] = [initial]
         save_row(tender)
+
+        # seed a Source row with URL so verification is 1 click
+        save_source({
+            "id": None, "title": title, "buyer": org, "type": "EOI",
+            "url": url, "file": "", "tender_id": i,
+            "deadline": tender["deadline"], "value": "",
+            "scraped_at": datetime.now().isoformat(timespec="seconds")
+        })
 
     return load_rows()
 
@@ -506,7 +538,7 @@ def validate_email_list(s: str) -> bool:
     return all(simple.match(e) for e in emails)
 
 # ======================================
-# TABS (added "Sources")
+# TABS (incl. "Sources")
 # ======================================
 tab_dash, tab_tenders, tab_drafts, tab_sources, tab_settings = st.tabs(
     ["Dashboard", "Tenders", "Drafts", "Sources", "Settings"]
@@ -552,17 +584,41 @@ with tab_dash:
             ).properties(height=240)
             st.altair_chart(donut, use_container_width=True)
 
-            st.markdown("##### Deadline Load (Next 30 Days)")
-            dl = m["deadline_30"]
-            if not dl.empty:
-                area = alt.Chart(dl).mark_area(opacity=0.6).encode(
-                    x=alt.X("date:T", title="Date"),
-                    y=alt.Y("tenders:Q", title="Count"),
-                    tooltip=["date:T", "tenders:Q"]
-                ).properties(height=220)
-                st.altair_chart(area, use_container_width=True)
+            st.markdown("##### Top Upcoming Deadlines (with Source)")
+            # Build a small table with a clickable source link
+            soon = []
+            for r in rows:
+                d = _safe_date(r.get("deadline"))
+                if d:
+                    soon.append({
+                        "Deadline": d.strftime("%Y-%m-%d"),
+                        "Title": r.get("title",""),
+                        "Status": r.get("status",""),
+                        "Assignee": r.get("assignee",""),
+                        "Source": primary_source_url(r["id"])
+                    })
+            soon = sorted(soon, key=lambda x: x["Deadline"])[:12]
+            if soon:
+                df_soon = pd.DataFrame(soon)
+                # Try to render as link column (Streamlit >= 1.30 supports LinkColumn)
+                try:
+                    st.dataframe(
+                        df_soon,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Source": st.column_config.LinkColumn(display_text="Open", help="Open original notice")
+                        }
+                    )
+                except Exception:
+                    # Fallback: plain table + an explicit list of links
+                    st.dataframe(df_soon.drop(columns=["Source"]), use_container_width=True, hide_index=True)
+                    st.caption("Sources:")
+                    for row in df_soon:
+                        if row["Source"]:
+                            st.markdown(f"- **{row['Title']}** → [Open source]({row['Source']})")
             else:
-                st.info("No deadlines in the next 30 days.")
+                st.info("No upcoming deadlines found.")
         else:
             st.info("No tenders yet. Add a few to unlock insights.")
 
@@ -588,19 +644,6 @@ with tab_dash:
             st.altair_chart(bar, use_container_width=True)
         else:
             st.info("No assignments yet.")
-
-        st.markdown("##### Top Upcoming Deadlines")
-        soon = []
-        for r in rows:
-            d = _safe_date(r.get("deadline"))
-            if d:
-                soon.append({"Deadline": d.strftime("%Y-%m-%d"), "Title": r.get("title",""),
-                             "Status": r.get("status",""), "Assignee": r.get("assignee","")})
-        soon = sorted(soon, key=lambda x: x["Deadline"])[:10]
-        if soon:
-            st.dataframe(pd.DataFrame(soon), use_container_width=True, hide_index=True)
-        else:
-            st.info("No upcoming deadlines found.")
 
     st.markdown("---")
     st.markdown("#### Activity Feed")
@@ -666,33 +709,38 @@ with tab_tenders:
             st.write("")
 
             for r in filtered:
-                row_cols = st.columns([0.6, 0.2, 0.2])
+                src_url = primary_source_url(r["id"])
+                row_cols = st.columns([0.55, 0.25, 0.2])
                 with row_cols[0]:
                     st.markdown(f"**{r['title']}**  \n_{r['org']}_")
+                    if src_url:
+                        st.markdown(f"🔗 **Source:** [{src_url}]({src_url})")
+                    else:
+                        st.caption("🔗 Source: not set yet")
                 with row_cols[1]:
                     st.markdown(f"**Deadline:** {r['deadline']}  \n**Status:** {r['status']}")
                 with row_cols[2]:
                     st.markdown(f"**Sector:** {r['sector']}  \n**Assignee:** {r.get('assignee','')}")
 
-                # Linked sources preview for this tender
-                linked = [s for s in load_sources() if s.get("tender_id")==r["id"]]
-                if linked:
-                    st.caption("Linked sources:")
-                    for s in linked:
-                        colx, coly, colz = st.columns([0.55, 0.25, 0.2])
-                        with colx:
-                            st.markdown(f"• **{s['type']}** — {s['title']}  \n_{s.get('buyer','')}_")
-                        with coly:
-                            if s.get("url"):
-                                st.link_button("Open URL", s["url"])
-                        with colz:
-                            fpath = s.get("file")
-                            if fpath and os.path.exists(fpath):
-                                with open(fpath, "rb") as fh:
-                                    st.download_button("Download", fh, file_name=Path(fpath).name, key=f"dl_src_{s['id']}_{r['id']}")
-
                 with st.expander("Details / Actions"):
                     st.write(f"**AI Summary:** {ai_summarize(r.get('description',''))}")
+
+                    # Also surface all linked sources (URLs + files)
+                    linked = [s for s in load_sources() if s.get("tender_id")==r["id"]]
+                    if linked:
+                        st.caption("All linked sources:")
+                        for s in linked:
+                            cA, cB, cC = st.columns([0.55, 0.25, 0.2])
+                            with cA:
+                                st.markdown(f"• **{s['type']}** — {s['title']}  \n_{s.get('buyer','')}_")
+                            with cB:
+                                if s.get("url"):
+                                    st.markdown(f"[Open URL]({s['url']})")
+                            with cC:
+                                fpath = s.get("file")
+                                if fpath and os.path.exists(fpath):
+                                    with open(fpath, "rb") as fh:
+                                        st.download_button("Download", fh, file_name=Path(fpath).name, key=f"dl_src_{s['id']}_{r['id']}")
 
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
@@ -729,10 +777,13 @@ with tab_tenders:
                 lane_items = [r for r in filtered if r.get("status")==status]
                 if not lane_items: st.caption("—")
                 for r in lane_items:
+                    src_url = primary_source_url(r["id"])
                     st.markdown(
                         f"<div class='card'><strong>{r['title']}</strong><br>"
                         f"<span class='pill'>{r['sector']}</span> <span class='pill'>Due: {r['deadline']}</span><br>"
-                        f"<small>{r.get('org','')}</small></div>", unsafe_allow_html=True
+                        f"<small>{r.get('org','')}</small><br>"
+                        f"{('🔗 <a href=\"'+src_url+'\" target=\"_blank\">Source</a>' if src_url else '<em>Source: not set</em>')}</div>",
+                        unsafe_allow_html=True
                     )
                     c1, c2 = st.columns(2)
                     with c1:
@@ -752,15 +803,22 @@ with tab_tenders:
     # -------- Calendar --------
     with sub_calendar:
         if filtered:
-            dfc = pd.DataFrame(filtered)
-            dfc["deadline_dt"] = pd.to_datetime(dfc["deadline"], errors="coerce")
-            cal = alt.Chart(dfc.dropna(subset=["deadline_dt"])).mark_circle(size=110).encode(
+            dfc = pd.DataFrame([
+                {
+                    **r,
+                    "deadline_dt": pd.to_datetime(r.get("deadline"), errors="coerce"),
+                    "source_url": primary_source_url(r["id"])
+                } for r in filtered
+            ])
+            dfc = dfc.dropna(subset=["deadline_dt"])
+            cal = alt.Chart(dfc).mark_circle(size=110).encode(
                 x=alt.X("deadline_dt:T", title="Deadline"),
                 y=alt.Y("sector:N", title="Sector"),
                 color=alt.Color("status:N", scale=alt.Scale(scheme="category10")),
-                tooltip=["title","org","deadline","status","assignee"]
+                tooltip=["title","org","deadline","status","assignee","source_url"]
             ).properties(height=320)
             st.altair_chart(cal, use_container_width=True)
+            st.caption("Tip: hover a dot to see the Source URL in the tooltip.")
         else:
             st.info("Nothing to plot.")
 
@@ -857,25 +915,24 @@ with tab_drafts:
                     if (d.get("id")==row["DraftID"]) or (d.get("version")==row["Version"]):
                         d_index = idx; d_obj = d; break
 
-            # Also load linked sources for this tender
+            # Linked sources (with URLs) for this tender
             tender_sources = [s for s in load_sources() if s.get("tender_id")==row["TenderID"]]
-
-            st.markdown(f"#### Edit Draft — {row['Tender']} (v{row['Version']})")
             if tender_sources:
                 st.caption("Linked sources for this tender:")
                 for s in tender_sources:
-                    csa, csb, csc = st.columns([0.6, 0.2, 0.2])
+                    csa, csb, csc = st.columns([0.6, 0.25, 0.15])
                     with csa:
                         st.markdown(f"• **{s['type']}** — {s['title']}  \n_{s.get('buyer','')}_  \nDeadline: {s.get('deadline','—')}  •  Value: {s.get('value','')}")
                     with csb:
                         if s.get("url"):
-                            st.link_button("Open URL", s["url"], key=f"srcurl_d_{s['id']}")
+                            st.markdown(f"[Open URL]({s['url']})")
                     with csc:
                         fpath = s.get("file")
                         if fpath and os.path.exists(fpath):
                             with open(fpath, "rb") as fh:
                                 st.download_button("Download", fh, file_name=Path(fpath).name, key=f"srcdl_d_{s['id']}")
 
+            st.markdown(f"#### Edit Draft — {row['Tender']} (v{row['Version']})")
             with st.form("edit_draft_form"):
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -968,10 +1025,10 @@ with tab_drafts:
                         except Exception: st.experimental_rerun()
 
 # ======================================
-# SOURCES LIBRARY (NEW)
+# SOURCES LIBRARY
 # ======================================
 with tab_sources:
-    st.markdown("### Sources Library (EOI / Tender / RFP)")
+    st.markdown("### Sources Library (EOI / Tender / RFP) — Human-verifiable links")
 
     sources = load_sources()
 
@@ -995,23 +1052,34 @@ with tab_sources:
         if s.get("type","Other") not in f_type: return False
         if f_buyer and s.get("buyer") not in f_buyer: return False
         if f_tender:
-            ok = False
-            for name in f_tender:
-                if s.get("tender_id")==tender_choices[name]:
-                    ok = True
+            ok = any(s.get("tender_id")==tender_choices[name] for name in f_tender)
             if not ok: return False
         return True
 
     view_sources = [s for s in sources if _match_src(s)] if sources else []
 
-    # Table
+    # Table with links
     if view_sources:
         df_src = pd.DataFrame(view_sources)[["id","title","buyer","type","deadline","value","tender_id","url","file","scraped_at"]]
         df_src = df_src.rename(columns={
             "id":"ID","title":"Title","buyer":"Buyer","type":"Type","deadline":"Deadline",
-            "value":"Value(₦)", "tender_id":"TenderID","url":"URL","file":"File","scraped_at":"Added"
+            "value":"Value(₦)", "tender_id":"TenderID","url":"Source","file":"File","scraped_at":"Added"
         })
-        st.dataframe(df_src, use_container_width=True, hide_index=True)
+        try:
+            st.dataframe(
+                df_src,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Source": st.column_config.LinkColumn(display_text="Open", help="Open original notice")
+                }
+            )
+        except Exception:
+            st.dataframe(df_src.drop(columns=["Source"]), use_container_width=True, hide_index=True)
+            st.caption("Links:")
+            for s in view_sources:
+                if s.get("url"):
+                    st.markdown(f"- **{s['Title']}** → [Open source]({s['url']})")
     else:
         st.info("No sources found yet. Add one below.")
 
@@ -1029,7 +1097,7 @@ with tab_sources:
             tendernames = ["— Not linked —"] + [r["title"] for r in rows]
             s_tender_name = st.selectbox("Link to Tender", tendernames)
             s_value = st.text_input("Contract Value (₦)", value="")
-            s_url = st.text_input("Source URL (if any)")
+            s_url = st.text_input("Source URL (paste exact page)")
         s_files = st.file_uploader(
             "Upload source file(s) (optional)",
             accept_multiple_files=True,
@@ -1038,7 +1106,6 @@ with tab_sources:
         add_btn = st.form_submit_button("➕ Save Source")
 
     if add_btn:
-        # Save each uploaded file as its own source row if multiple; else save URL-only record
         if s_files:
             for f in s_files:
                 savep = SOURCES_DIR / f.name
@@ -1057,11 +1124,7 @@ with tab_sources:
                     "scraped_at": datetime.now().isoformat(timespec="seconds")
                 }
                 save_source(src)
-            st.success("Source(s) saved.")
-            try: st.rerun()
-            except Exception: st.experimental_rerun()
         else:
-            # URL-only row
             src = {
                 "id": None,
                 "title": s_title or (s_url or "Untitled"),
@@ -1075,19 +1138,17 @@ with tab_sources:
                 "scraped_at": datetime.now().isoformat(timespec="seconds")
             }
             save_source(src)
-            st.success("Source saved.")
-            try: st.rerun()
-            except Exception: st.experimental_rerun()
+        st.success("Source saved.")
+        try: st.rerun()
+        except Exception: st.experimental_rerun()
 
     st.markdown("---")
     st.markdown("#### Manage Sources")
 
-    # Quick actions per source
     for s in view_sources:
         with st.expander(f"[{s['type']}] {s['title']}  —  {s.get('buyer','')}"):
             cc1, cc2, cc3, cc4, cc5 = st.columns([0.25, 0.25, 0.25, 0.15, 0.10])
             with cc1:
-                # Re-link to a different tender
                 new_link = st.selectbox(
                     "Linked Tender",
                     ["— Not linked —"] + [r["title"] for r in rows],
@@ -1102,7 +1163,7 @@ with tab_sources:
                 new_value = st.text_input("Value (₦)", value=s.get("value",""), key=f"relv_{s['id']}")
             with cc4:
                 if s.get("url"):
-                    st.link_button("Open URL", s["url"], key=f"murl_{s['id']}")
+                    st.markdown(f"[Open URL]({s['url']})")
             with cc5:
                 fpath = s.get("file")
                 if fpath and os.path.exists(fpath):
