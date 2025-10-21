@@ -1,12 +1,14 @@
-# TFML Agentic AI — Luxe Console (Full App with Upgraded Tenders + Seeded EOIs)
-# -----------------------------------------------------------------------------
-# - Tabs visibility fixed (light + dark)
-# - Executive Dashboard unchanged (already improved previously)
-# - Tenders page overhauled: Filters, List/Kanban/Calendar, bulk actions, inline actions
-# - Seeder: 6 placeholder tenders + auto-generated EOIs
-# - Safe notices (no key= on status messages)
+# TFML Agentic AI — Luxe Console (Tenders + Drafts Workspace)
+# -----------------------------------------------------------
+# - Tabs visible (light + dark)
+# - Executive Dashboard (KPIs, alerts, charts, activity)
+# - Tenders page: filters + List/Kanban/Calendar + "Generate Draft Response"
+# - Drafts page: list, edit window (To/CC/Subject/Value/Body), attachments, duplicate, submit, send
+# - Seeder: 6 realistic tenders with first draft
+# - Safe Streamlit usage (no key= on status messages)
 
 import os
+import re
 import json
 import time
 from datetime import datetime, timedelta, date
@@ -17,10 +19,10 @@ import pandas as pd
 import altair as alt
 from docx import Document
 from PIL import Image
-import requests  # Placeholder for external API
+import requests  # placeholder
 
 # ======================================
-# PATHS AND CONFIG
+# PATHS / CONFIG
 # ======================================
 try:
     BASE_DIR = Path(__file__).resolve().parent
@@ -36,11 +38,11 @@ LOGO_PATH = ASSETS / "tfml_logo.png"
 EOIS.mkdir(parents=True, exist_ok=True)
 LOGS.mkdir(parents=True, exist_ok=True)
 
-# Theme
+# Brand theme
 ACCENT = "#E60F18"      # TFML Red
-CARD = "#FFFFFF"        # White for cards
-TEXT = "#000000"        # Black text
-MUTED = "#555555"       # Muted gray
+CARD = "#FFFFFF"
+TEXT = "#000000"
+MUTED = "#555555"
 APP_BG_LIGHT = "#F9F9F9"
 APP_BG_DARK = "#1E1E1E"
 CARD_DARK = "#2A2A2A"
@@ -53,136 +55,42 @@ st.set_page_config(
 )
 
 # ======================================
-# CSS (tabs fix + dark mode + cards)
+# CSS
 # ======================================
 st.markdown(f"""
 <style>
-/* Base */
-.stApp {{
-    background: {APP_BG_LIGHT};
-    color: {TEXT};
-}}
+.stApp {{ background: {APP_BG_LIGHT}; color: {TEXT}; }}
 .block-container {{ padding-top: 1rem; }}
+.header {{ display:flex; align-items:center; gap:14px; padding:6px 0 14px; border-bottom:1px solid #ddd; }}
+.header .title {{ font-weight:900; font-size:26px; color:{ACCENT}; letter-spacing:.2px; }}
+.kpi {{ background:{CARD}; border:1px solid #ddd; border-radius:14px; padding:16px; color:{TEXT}; }}
+.kpi .label {{ color:{MUTED}; font-size:.78rem; text-transform:uppercase; letter-spacing:1px; }}
+.kpi .value {{ font-size:1.8rem; font-weight:800; color:{ACCENT}; }}
+.card {{ background:{CARD}; border:1px solid #ddd; border-radius:14px; padding:16px; color:{TEXT}; }}
+.pill {{ display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; font-weight:700; background:#eee; color:{ACCENT}; border:1px solid {ACCENT}; }}
 
-/* Header */
-.header {{
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding: 6px 0 14px 0;
-    border-bottom:1px solid #ddd;
-}}
-.header .title {{
-    font-weight:900;
-    font-size:26px;
-    color: {ACCENT};
-    letter-spacing:.2px;
-}}
-
-/* Cards & KPIs */
-.kpi {{
-    background: {CARD};
-    border: 1px solid #ddd;
-    border-radius: 14px;
-    padding: 16px;
-    color: {TEXT};
-}}
-.kpi .label {{
-    color: {MUTED};
-    font-size:.78rem;
-    text-transform:uppercase;
-    letter-spacing:1px;
-}}
-.kpi .value {{
-    font-size:1.8rem;
-    font-weight:800;
-    color: {ACCENT};
-}}
-.card {{
-    background: {CARD};
-    border:1px solid #ddd;
-    border-radius: 14px;
-    padding: 16px;
-    color: {TEXT};
-}}
-.pill {{
-    display:inline-block;
-    padding: 2px 10px;
-    border-radius: 999px;
-    font-size: .75rem;
-    font-weight: 700;
-    background: #eee;
-    color: {ACCENT};
-    border: 1px solid {ACCENT};
-}}
-
-/* Tabs — explicit styling to ensure readability */
-.stTabs [role="tablist"] {{
-    gap: 8px !important;
-    border-bottom: 0;
-    margin-bottom: 0.5rem;
-}}
+.stTabs [role="tablist"] {{ gap:8px; border-bottom:0; margin-bottom:.5rem; }}
 .stTabs [role="tab"] {{
-    padding: 10px 16px !important;
-    border: 1px solid #ddd !important;
-    background: #fff !important;
-    color: #000 !important;
-    border-top-left-radius: 10px !important;
-    border-top-right-radius: 10px !important;
-    font-weight: 700 !important;
-    opacity: 1 !important;
+  padding:10px 16px; border:1px solid #ddd; background:#fff; color:#000;
+  border-top-left-radius:10px; border-top-right-radius:10px; font-weight:700; opacity:1;
 }}
-.stTabs [role="tab"][aria-selected="true"] {{
-    background: {ACCENT} !important;
-    color: #fff !important;
-    border-color: {ACCENT} !important;
-}}
+.stTabs [role="tab"][aria-selected="true"] {{ background:{ACCENT}; color:#fff; border-color:{ACCENT}; }}
 
-/* Dark Mode */
-.dark-mode .stApp {{
-    background: {APP_BG_DARK};
-    color: #FFFFFF;
-}}
-.dark-mode .kpi {{
-    background: {CARD_DARK};
-    border-color: #444;
-    color: #FFFFFF;
-}}
-.dark-mode .kpi .value {{ color: #FFFFFF; }}
-.dark-mode .card {{
-    background: {CARD_DARK};
-    border-color: #444;
-    color: #FFFFFF;
-}}
-.dark-mode .header .title {{ color: #FFFFFF; }}
-.dark-mode .pill {{
-    background: #444;
-    color: #FFFFFF;
-    border-color: #FFFFFF;
-}}
-
-/* Tabs in dark mode */
-.dark-mode .stTabs [role="tab"] {{
-    background: {CARD_DARK} !important;
-    border-color: #444 !important;
-    color: #fff !important;
-}}
-.dark-mode .stTabs [role="tab"][aria-selected="true"] {{
-    background: {ACCENT} !important;
-    border-color: {ACCENT} !important;
-    color: #fff !important;
-}}
+.dark-mode .stApp {{ background:{APP_BG_DARK}; color:#fff; }}
+.dark-mode .kpi, .dark-mode .card {{ background:{CARD_DARK}; border-color:#444; color:#fff; }}
+.dark-mode .header .title {{ color:#fff; }}
+.dark-mode .pill {{ background:#444; color:#fff; border-color:#fff; }}
+.dark-mode .stTabs [role="tab"] {{ background:{CARD_DARK}; border-color:#444; color:#fff; }}
+.dark-mode .stTabs [role="tab"][aria-selected="true"] {{ background:{ACCENT}; border-color:{ACCENT}; color:#fff; }}
 
 @media (max-width: 600px) {{
-    .kpi {{ padding: 10px; }}
-    .kpi .value {{ font-size: 1.4rem; }}
-    .header .title {{ font-size: 20px; }}
+  .kpi {{ padding:10px; }} .kpi .value {{ font-size:1.4rem; }} .header .title {{ font-size:20px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
 
 # ======================================
-# DATABASE
+# DB LAYER
 # ======================================
 def init_db():
     conn = sqlite3.connect(TENDERS_DB)
@@ -209,15 +117,12 @@ def load_rows():
         conn = sqlite3.connect(TENDERS_DB)
         c = conn.cursor()
         c.execute("SELECT * FROM tenders")
-        rows = [
-            {
-                "id": r[0], "title": r[1], "org": r[2], "sector": r[3],
-                "deadline": r[4], "description": r[5], "status": r[6],
-                "score": r[7], "assignee": r[8],
-                "drafts": json.loads(r[9]) if r[9] else []
-            }
-            for r in c.fetchall()
-        ]
+        rows = [{
+            "id": r[0], "title": r[1], "org": r[2], "sector": r[3],
+            "deadline": r[4], "description": r[5], "status": r[6],
+            "score": r[7], "assignee": r[8],
+            "drafts": json.loads(r[9]) if r[9] else []
+        } for r in c.fetchall()]
         conn.close()
         return rows
     except Exception as e:
@@ -251,11 +156,10 @@ def delete_row(tender_id):
     except Exception as e:
         st.error(f"Error deleting tender: {e}")
 
-# Initialize DB
 init_db()
 
 # ======================================
-# DOC GENERATION
+# UTIL / DOCS
 # ======================================
 EOI_TMPL = """Dear {recipient},
 
@@ -270,137 +174,121 @@ Sincerely,
 TFML Bid Office
 """
 
-def write_docx(tender, doc_kind="EOI", version=1):
-    try:
-        safe_title = tender.get("title", "Untitled")[:60].replace(" ", "_")
-        fname = f"{safe_title}_{doc_kind}_v{version}.docx"
-        fpath = EOIS / fname
-        doc = Document()
-        doc.add_heading(f"{doc_kind} Draft (v{version})", level=1)
-        body = EOI_TMPL.format(
-            recipient=tender.get("recipient", st.session_state.get("default_recipient", "Procurement Team")),
-            title=tender.get("title", "Untitled"),
-            sector_desc=tender.get("sector", "Facilities Management").lower(),
-            summary=tender.get("description", "—"),
-        )
-        for line in body.split("\n"):
-            doc.add_paragraph(line)
-        doc.save(fpath)
-        return str(fpath)
-    except Exception as e:
-        st.error(f"Error generating document: {e}")
-        return None
-
-# ======================================
-# AI PLACEHOLDER
-# ======================================
-def ai_summarize(description):
-    return f"Summary: {description[:180]}..."  # Replace with real AI call later
-
-# ======================================
-# UTILITIES
-# ======================================
 def _safe_date(s):
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception:
         return None
 
+def _suggest_email(org: str) -> str:
+    org = (org or "").lower()
+    if "mtn" in org: return "procurement@mtn.com"
+    if "fcta" in org: return "procurement@fcta.gov.ng"
+    if "faan" in org: return "procurement@faan.gov.ng"
+    if "ifma" in org: return "secretariat@ifma.org.ng"
+    if "aatc" in org or "afrex" in org: return "procurement@afreximbank.com"
+    if "nibss" in org: return "tenders@nibss-plc.com"
+    return "procurement@buyer.ng"
+
+def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
+    """Generate a DOCX from a draft dict (subject/body) and save under eois/."""
+    safe_fn = filename_hint[:60].replace(" ", "_")
+    path = EOIS / f"{safe_fn}.docx"
+    doc = Document()
+    doc.add_heading(draft.get("subject", "Draft Response"), level=1)
+    to_line = f"To: {draft.get('to','')}"
+    cc_line = f"CC: {draft.get('cc','')}"
+    val_line = f"Contract Value (₦): {draft.get('value','')}"
+    for meta in (to_line, cc_line, val_line):
+        doc.add_paragraph(meta)
+    doc.add_paragraph("")  # spacer
+    body = draft.get("body") or "—"
+    for line in body.split("\n"):
+        doc.add_paragraph(line)
+    doc.save(path)
+    return str(path)
+
+def write_docx(tender, doc_kind="EOI", version=1):
+    safe_title = tender.get("title", "Untitled")[:60].replace(" ", "_")
+    fpath = EOIS / f"{safe_title}_{doc_kind}_v{version}.docx"
+    doc = Document()
+    doc.add_heading(f"{doc_kind} Draft (v{version})", level=1)
+    body = EOI_TMPL.format(
+        recipient=tender.get("recipient", st.session_state.get("default_recipient", "Procurement Team")),
+        title=tender.get("title", "Untitled"),
+        sector_desc=tender.get("sector", "Facilities Management").lower(),
+        summary=tender.get("description", "—"),
+    )
+    for line in body.split("\n"):
+        doc.add_paragraph(line)
+    doc.save(fpath)
+    return str(fpath)
+
+def ai_summarize(description):
+    return f"Summary: {description[:180]}..."  # placeholder for real LLM
+
 # ======================================
-# SEEDER (6 placeholder tenders + generated EOIs)
+# SEED 6 SAMPLE TENDERS + FIRST DRAFT
 # ======================================
 def seed_sample_data_if_empty():
     rows_now = load_rows()
-    if rows_now:
-        return rows_now
+    if rows_now: return rows_now
 
     today = date.today()
     samples = [
-        {
-            "title": "IFMA Abuja Secretariat FM Services",
-            "org": "IFMA Nigeria",
-            "sector": "Facilities Management",
-            "deadline": (today + timedelta(days=6)).strftime("%Y-%m-%d"),
-            "description": "Provision of integrated FM services (hard + soft) for IFMA Secretariat building in Abuja, including planned preventive maintenance, SLA reporting, and helpdesk.",
-            "status": "Draft",
-            "assignee": "bids@tfml.ng",
-        },
-        {
-            "title": "AATC HQ Janitorial & Waste Management",
-            "org": "Afreximbank AATC",
-            "sector": "Facilities Management",
-            "deadline": (today + timedelta(days=12)).strftime("%Y-%m-%d"),
-            "description": "Comprehensive janitorial, pest control, and waste management services for AATC HQ office complex with quarterly deep-clean and ISO-aligned documentation.",
-            "status": "Submitted",
-            "assignee": "enoch@tfml.ng",
-        },
-        {
-            "title": "Wuse District Streetlighting Retrofit",
-            "org": "FCTA",
-            "sector": "Energy",
-            "deadline": (today + timedelta(days=3)).strftime("%Y-%m-%d"),
-            "description": "LED retrofit and solar hybridization for Wuse district arterial roads, including energy audit and post-implementation M&V.",
-            "status": "Pending",
-            "assignee": "femi@tfml.ng",
-        },
-        {
-            "title": "MTN Regional Hub M&E Maintenance",
-            "org": "MTN Nigeria",
-            "sector": "Construction",
-            "deadline": (today + timedelta(days=20)).strftime("%Y-%m-%d"),
-            "description": "HVAC, power distribution, fire systems and generator maintenance for MTN regional hub; 24/7 response; CMMS-based reporting.",
-            "status": "Draft",
-            "assignee": "greg@tfml.ng",
-        },
-        {
-            "title": "Airport Concourse Cleaning & Consumables",
-            "org": "FAAN",
-            "sector": "Facilities Management",
-            "deadline": (today + timedelta(days=9)).strftime("%Y-%m-%d"),
-            "description": "Terminal concourse cleaning, restrooms, and traveler touchpoints with IoT counters and predictive replenishment for consumables.",
-            "status": "Submitted",
-            "assignee": "bids@tfml.ng",
-        },
-        {
-            "title": "Data Centre Critical Environment FM",
-            "org": "NIBSS",
-            "sector": "Facilities Management",
-            "deadline": (today + timedelta(days=1)).strftime("%Y-%m-%d"),
-            "description": "Tier-III data centre operations: chilled water, precision cooling, UPS, fire suppression; 15-min incident response; trained critical environment techs.",
-            "status": "Draft",
-            "assignee": "ops@tfml.ng",
-        },
+        ("IFMA Abuja Secretariat FM Services", "IFMA Nigeria", "Facilities Management", 6,
+         "PPP maintenance, SLA reporting & helpdesk for IFMA Secretariat, Abuja.", "Draft", "bids@tfml.ng"),
+        ("AATC HQ Janitorial & Waste Management", "Afreximbank AATC", "Facilities Management", 12,
+         "Janitorial, pest, waste services for AATC HQ; ISO docs & quarterly deep-clean.", "Submitted", "enoch@tfml.ng"),
+        ("Wuse District Streetlighting Retrofit", "FCTA", "Energy", 3,
+         "LED retrofit + solar hybridization for Wuse district roads; energy audit + M&V.", "Pending", "femi@tfml.ng"),
+        ("MTN Regional Hub M&E Maintenance", "MTN Nigeria", "Construction", 20,
+         "HVAC, power, fire, gen maintenance + CMMS reporting; 24/7 response.", "Draft", "greg@tfml.ng"),
+        ("Airport Concourse Cleaning & Consumables", "FAAN", "Facilities Management", 9,
+         "Terminal cleaning, restrooms, touchpoints; IoT counters & predictive supply.", "Submitted", "bids@tfml.ng"),
+        ("Data Centre Critical Environment FM", "NIBSS", "Facilities Management", 1,
+         "Tier-III: chilled water, precision cooling, UPS, suppression; 15-min response.", "Draft", "ops@tfml.ng"),
     ]
 
-    rows_seeded = []
-    for i, s in enumerate(samples, start=1):
+    for i, (title, org, sector, days_out, desc, status, assignee) in enumerate(samples, start=1):
         tender = {
-            "id": i,
-            "title": s["title"],
-            "org": s["org"],
-            "sector": s["sector"],
-            "deadline": s["deadline"],
-            "description": s["description"],
-            "status": s["status"],
-            "score": 0.0,
-            "assignee": s["assignee"],
-            "drafts": []
+            "id": i, "title": title, "org": org, "sector": sector,
+            "deadline": (today + timedelta(days=days_out)).strftime("%Y-%m-%d"),
+            "description": desc, "status": status, "score": 0.0,
+            "assignee": assignee, "drafts": []
         }
+        # Initial draft response (email-style)
+        to_email = _suggest_email(org)
+        initial_draft = {
+            "id": f"{i}:1",
+            "type": "EOI",
+            "version": 1,
+            "status": "Draft",
+            "to": to_email,
+            "cc": "bids@tfml.ng",
+            "subject": f"Expression of Interest — {title}",
+            "value": "",
+            "body": EOI_TMPL.format(
+                recipient="Procurement Team",
+                title=title,
+                sector_desc=sector.lower(),
+                summary=desc
+            ),
+            "attachments": [],
+            "file": "",  # will fill on download
+            "last_updated": datetime.now().isoformat(timespec="seconds")
+        }
+        tender["drafts"] = [initial_draft]
         save_row(tender)
-        # Generate 1 EOI draft for each seeded tender to give 'real' feel
-        path = write_docx(tender, "EOI", version=1)
-        if path:
-            tender["drafts"] = [{"type": "EOI", "file": path, "version": 1}]
-            save_row(tender)
-        rows_seeded.append(tender)
-
     return load_rows()
 
 # ======================================
-# EMAIL PLACEHOLDER
+# FAKE EMAIL SENDER
 # ======================================
-def send_email(recipient, subject, body, attachment_path):
-    st.success(f"Email sent to {recipient} with attachment {attachment_path}")
+def send_email(recipient, subject, body, attachment_paths=None, cc=None):
+    # integrate SMTP later; for now, simulate success
+    cc_text = f" (cc: {cc})" if cc else ""
+    st.success(f"Email queued to **{recipient}**{cc_text} with subject **{subject}**.")
 
 # ======================================
 # HEADER
@@ -416,11 +304,10 @@ def logo_header():
         st.markdown(f"<div class='header'><div class='title'>Agentic AI Console</div></div>", unsafe_allow_html=True)
         st.markdown(f"<span style='color:{ACCENT};opacity:.9;'>It’s all about you… • one-click drafting • faster BD • higher win rate</span>", unsafe_allow_html=True)
 
-# Render header BEFORE tabs
 logo_header()
 
 # ======================================
-# LOAD DATA + NOTICES
+# LOAD DATA + SOON DUE NOTICES
 # ======================================
 rows = seed_sample_data_if_empty()
 
@@ -430,13 +317,12 @@ def render_deadline_notices(rows, days=3):
     for r in rows:
         d = _safe_date(r.get("deadline"))
         if d and d <= soon:
-            title = r.get("title", "Untitled")
-            st.warning(f"⚠️ Tender '{title}' is due on {d.strftime('%Y-%m-%d')}!")
+            st.warning(f"⚠️ Tender '{r.get('title','Untitled')}' is due on {d.strftime('%Y-%m-%d')}!")
 
 render_deadline_notices(rows, days=3)
 
 # ======================================
-# DASHBOARD HELPERS (unchanged from your improved version)
+# DASHBOARD HELPERS
 # ======================================
 def compute_dashboard_metrics(rows):
     today = datetime.today().date()
@@ -452,40 +338,30 @@ def compute_dashboard_metrics(rows):
     inflight = [r for r in rows if r.get("status") in ("Submitted", "Pending")]
     awarded = [r for r in rows if r.get("status") in ("Awarded", "Won")]
     decided = [r for r in rows if r.get("status") in ("Awarded", "Won", "Lost")]
-
     win_rate = round((len(awarded) / len(decided) * 100.0), 1) if decided else 0.0
 
-    # Assignee workload
     by_assignee = {}
     for r in rows:
         a = (r.get("assignee") or "Unassigned").strip() or "Unassigned"
         by_assignee[a] = by_assignee.get(a, 0) + 1
 
-    # Upcoming 30-day deadline load
     next30 = []
     for d, r in deadlines:
         if d and today <= d <= (today + timedelta(days=30)):
             next30.append(d)
-    df_next30 = (
-        pd.Series(next30, name="date")
-        .value_counts()
-        .rename_axis("date")
-        .reset_index(name="tenders")
-        .sort_values("date")
-        if next30 else pd.DataFrame(columns=["date", "tenders"])
-    )
+    df_next30 = (pd.Series(next30, name="date").value_counts().rename_axis("date").reset_index(name="tenders").sort_values("date")
+                 if next30 else pd.DataFrame(columns=["date", "tenders"]))
 
-    # Activity feed from drafts
     feed = []
     for r in rows:
         for d in r.get("drafts", []):
             feed.append({
-                "when": os.path.getmtime(d.get("file")) if d.get("file") and os.path.exists(d["file"]) else time.time(),
+                "when": os.path.getmtime(d["file"]) if d.get("file") and os.path.exists(d["file"]) else time.time(),
                 "tender": r.get("title", "Untitled"),
                 "type": d.get("type", "Doc"),
                 "file": os.path.basename(d.get("file") or ""),
                 "version": d.get("version", 1),
-                "status": r.get("status", "")
+                "status": d.get("status", "")
             })
     feed_df = pd.DataFrame(feed)
     if not feed_df.empty:
@@ -493,20 +369,46 @@ def compute_dashboard_metrics(rows):
         feed_df = feed_df.sort_values("when", ascending=False)
 
     return {
-        "total": total,
-        "overdue": len(overdue),
-        "due3": len(due3),
-        "due7": len(due7),
-        "drafts": len(drafts),
-        "inflight": len(inflight),
-        "awarded": len(awarded),
-        "win_rate": win_rate,
-        "overdue_list": overdue,
-        "soon_list": sorted([r for r in rows if _safe_date(r.get("deadline"))], key=lambda x: _safe_date(x["deadline"]))[:10],
-        "assignee_counts": by_assignee,
-        "deadline_30": df_next30,
-        "activity": feed_df
+        "total": total, "overdue": len(overdue), "due3": len(due3), "due7": len(due7),
+        "drafts": len(drafts), "inflight": len(inflight), "awarded": len(awarded), "win_rate": win_rate,
+        "assignee_counts": by_assignee, "deadline_30": df_next30, "activity": feed_df
     }
+
+# ======================================
+# DRAFT HELPERS
+# ======================================
+def new_draft_response_for_tender(tender: dict, kind="EOI"):
+    """Create and attach a new draft response with sensible defaults."""
+    next_version = (max([d.get("version", 0) for d in tender.get("drafts", [])]) + 1) if tender.get("drafts") else 1
+    draft_id = f"{tender['id']}:{next_version}"
+    draft = {
+        "id": draft_id,
+        "type": kind,
+        "version": next_version,
+        "status": "Draft",          # Draft -> Ready -> Sent -> Submitted
+        "to": _suggest_email(tender.get("org")),
+        "cc": "bids@tfml.ng",
+        "subject": f"{'Proposal' if kind!='EOI' else 'Expression of Interest'} — {tender.get('title','')}",
+        "value": "",                # ₦
+        "body": EOI_TMPL.format(
+            recipient="Procurement Team",
+            title=tender.get("title","Untitled"),
+            sector_desc=tender.get("sector","Facilities Management").lower(),
+            summary=tender.get("description","—"),
+        ),
+        "attachments": [],
+        "file": "",
+        "last_updated": datetime.now().isoformat(timespec="seconds")
+    }
+    tender["drafts"] = (tender.get("drafts") or []) + [draft]
+    save_row(tender)
+    return draft
+
+def validate_email_list(s: str) -> bool:
+    if not s: return True
+    emails = [e.strip() for e in s.split(",") if e.strip()]
+    simple = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    return all(simple.match(e) for e in emails)
 
 # ======================================
 # TABS
@@ -514,28 +416,21 @@ def compute_dashboard_metrics(rows):
 tab_dash, tab_tenders, tab_drafts, tab_settings = st.tabs(["Dashboard", "Tenders", "Drafts", "Settings"])
 
 # ======================================
-# DASHBOARD (kept from your improved version)
+# DASHBOARD
 # ======================================
 with tab_dash:
     st.markdown("#### Executive Overview")
     m = compute_dashboard_metrics(rows)
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1:
-        st.markdown(f"<div class='kpi'><div class='label'>Total</div><div class='value'>{m['total']}</div><div class='sub'>All notices</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"<div class='kpi'><div class='label'>Overdue</div><div class='value'>{m['overdue']}</div><div class='sub'>Past deadline</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown(f"<div class='kpi'><div class='label'>Due in 3 days</div><div class='value'>{m['due3']}</div><div class='sub'>Immediate action</div></div>", unsafe_allow_html=True)
-    with c4:
-        st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{m['due7']}</div><div class='sub'>Upcoming</div></div>", unsafe_allow_html=True)
-    with c5:
-        st.markdown(f"<div class='kpi'><div class='label'>In Flight</div><div class='value'>{m['inflight']}</div><div class='sub'>Submitted/Pending</div></div>", unsafe_allow_html=True)
-    with c6:
-        st.markdown(f"<div class='kpi'><div class='label'>Win rate</div><div class='value'>{m['win_rate']}%</div><div class='sub'>Awards: {m['awarded']}</div></div>", unsafe_allow_html=True)
+    with c1: st.markdown(f"<div class='kpi'><div class='label'>Total</div><div class='value'>{m['total']}</div><div class='sub'>All notices</div></div>", unsafe_allow_html=True)
+    with c2: st.markdown(f"<div class='kpi'><div class='label'>Overdue</div><div class='value'>{m['overdue']}</div><div class='sub'>Past deadline</div></div>", unsafe_allow_html=True)
+    with c3: st.markdown(f"<div class='kpi'><div class='label'>Due in 3 days</div><div class='value'>{m['due3']}</div><div class='sub'>Immediate action</div></div>", unsafe_allow_html=True)
+    with c4: st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{m['due7']}</div><div class='sub'>Upcoming</div></div>", unsafe_allow_html=True)
+    with c5: st.markdown(f"<div class='kpi'><div class='label'>In Flight</div><div class='value'>{m['inflight']}</div><div class='sub'>Submitted/Pending</div></div>", unsafe_allow_html=True)
+    with c6: st.markdown(f"<div class='kpi'><div class='label'>Win rate</div><div class='value'>{m['win_rate']}%</div><div class='sub'>Awards: {m['awarded'] if 'awarded' in m else ''}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-
     left, right = st.columns([0.6, 0.4])
 
     with left:
@@ -553,10 +448,7 @@ with tab_dash:
             st.altair_chart(sector_chart, use_container_width=True)
 
             st.markdown("##### Pipeline Status")
-            df_status = df.copy()
-            if "status" not in df_status.columns:
-                df_status["status"] = "Draft"
-            donut = alt.Chart(df_status).mark_arc(innerRadius=70).encode(
+            donut = alt.Chart(df).mark_arc(innerRadius=70).encode(
                 theta=alt.Theta("count():Q"),
                 color=alt.Color("status:N", scale=alt.Scale(scheme='category10')),
                 tooltip=["status", "count()"]
@@ -564,8 +456,9 @@ with tab_dash:
             st.altair_chart(donut, use_container_width=True)
 
             st.markdown("##### Deadline Load (Next 30 Days)")
-            if not compute_dashboard_metrics(rows)["deadline_30"].empty:
-                area = alt.Chart(compute_dashboard_metrics(rows)["deadline_30"]).mark_area(opacity=0.6).encode(
+            dl = m["deadline_30"]
+            if not dl.empty:
+                area = alt.Chart(dl).mark_area(opacity=0.6).encode(
                     x=alt.X("date:T", title="Date"),
                     y=alt.Y("tenders:Q", title="Count"),
                     tooltip=["date:T", "tenders:Q"]
@@ -601,42 +494,33 @@ with tab_dash:
 
         st.markdown("##### Top Upcoming Deadlines")
         soon = []
-        for r in m["soon_list"]:
+        for r in rows:
             d = _safe_date(r.get("deadline"))
-            soon.append({
-                "Deadline": d.strftime("%Y-%m-%d") if d else "",
-                "Title": r.get("title", ""),
-                "Status": r.get("status", ""),
-                "Assignee": r.get("assignee", "")
-            })
+            if d: soon.append({"Deadline": d.strftime("%Y-%m-%d"), "Title": r.get("title",""), "Status": r.get("status",""), "Assignee": r.get("assignee","")})
+        soon = sorted(soon, key=lambda x: x["Deadline"])[:10]
         if soon:
-            st.dataframe(pd.DataFrame(soon).head(10), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(soon), use_container_width=True, hide_index=True)
         else:
             st.info("No upcoming deadlines found.")
 
     st.markdown("---")
-
     st.markdown("#### Activity Feed")
-    if not m["activity"].empty:
-        af = m["activity"][["when", "tender", "type", "version", "file", "status"]].rename(columns={
-            "when": "Time",
-            "tender": "Tender",
-            "type": "Doc",
-            "version": "v",
-            "file": "File",
-            "status": "Status"
+    act = m["activity"]
+    if not act.empty:
+        af = act[["when","tender","type","version","file","status"]].rename(columns={
+            "when":"Time","tender":"Tender","type":"Doc","version":"v","file":"File","status":"Status"
         })
         st.dataframe(af.head(15), use_container_width=True, hide_index=True)
     else:
-        st.caption("No document activity yet. Generate an EOI to see activity here.")
+        st.caption("No document activity yet. Generate a draft response to see activity here.")
 
 # ======================================
-# TENDERS (Overhauled)
+# TENDERS
 # ======================================
 with tab_tenders:
     st.markdown("### Manage Tenders")
 
-    # ---------- Filters Bar ----------
+    # Filters
     colf1, colf2, colf3, colf4 = st.columns([0.35, 0.2, 0.25, 0.2])
     with colf1:
         search = st.text_input("Search title or buyer", placeholder="e.g., 'airport' or 'FAAN'")
@@ -644,85 +528,53 @@ with tab_tenders:
         all_statuses = ["Draft", "Submitted", "Pending", "Awarded", "Won", "Lost"]
         status_filter = st.multiselect("Status", all_statuses, default=["Draft", "Submitted", "Pending"])
     with colf3:
-        sectors = sorted({r.get("sector", "") for r in rows if r.get("sector")}) or ["Facilities Management", "Construction", "Energy", "Other"]
+        sectors = sorted({r.get("sector","") for r in rows if r.get("sector")}) or ["Facilities Management","Construction","Energy","Other"]
         sector_filter = st.multiselect("Sector", sectors, default=sectors)
     with colf4:
         today = datetime.today().date()
-        start_default = today - timedelta(days=14)
-        end_default = today + timedelta(days=60)
-        start_date = st.date_input("From", start_default)
-        end_date = st.date_input("To", end_default)
+        start_date = st.date_input("From", today - timedelta(days=14))
+        end_date = st.date_input("To", today + timedelta(days=60))
 
-    # Natural language quick filter
-    nl_query = st.text_input("Ask about tenders (e.g., 'Show tenders due this week')", placeholder="Type a natural language query")
-    def process_natural_language_query(query, rows):
-        if not query:
-            return rows
-        q = query.lower().strip()
-        if "due this week" in q:
-            end = today + timedelta(days=7)
-            return [r for r in rows if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) <= end]
-        if "overdue" in q:
-            return [r for r in rows if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) < today]
-        return rows
+    # Natural language
+    nl_query = st.text_input("Ask about tenders (e.g., 'show overdue', 'due this week')")
+    def process_nl(q, rs):
+        if not q: return rs
+        q = q.lower().strip()
+        if "overdue" in q: return [r for r in rs if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) < today]
+        if "due this week" in q: return [r for r in rs if _safe_date(r.get("deadline")) and _safe_date(r["deadline"]) <= (today + timedelta(days=7))]
+        return rs
+    filtered = process_nl(nl_query, rows)
 
-    filtered_rows = process_natural_language_query(nl_query, rows)
-
-    # Apply filters
     def _match(r):
         t = (r.get("title","") + " " + r.get("org","")).lower()
         d = _safe_date(r.get("deadline"))
         in_range = (d is None) or (start_date <= d <= end_date)
         return (search.lower() in t) and (r.get("status") in status_filter) and (r.get("sector") in sector_filter) and in_range
+    filtered = [r for r in filtered if _match(r)]
 
-    filtered_rows = [r for r in filtered_rows if _match(r)]
-
-    # ---------- Bulk actions ----------
-    st.markdown("#### Bulk Actions")
-    colb1, colb2, colb3, colb4 = st.columns([0.25, 0.25, 0.25, 0.25])
-    with colb1:
-        bulk_status = st.selectbox("Set status for selected", all_statuses, index=0)
-    with colb2:
-        run_bulk_status = st.button("Apply Status to Selected")
-    with colb3:
-        run_bulk_eoi = st.button("Generate EOI for Selected")
-    with colb4:
-        export_csv = st.button("Export Filtered as CSV")
-
-    # Selection model
-    selected_ids = set()
-    # Sub-tabs
+    # Sub-views
     sub_list, sub_kanban, sub_calendar = st.tabs(["List", "Kanban", "Calendar"])
 
-    # Helper to save selection
-    def checkbox_id(label, tender_id):
-        return st.checkbox(label, key=f"sel_{tender_id}")
-
-    # -------- LIST VIEW --------
+    # -------- List View --------
     with sub_list:
-        if filtered_rows:
-            # Stats row
+        if filtered:
+            # Chips by assignee
             by_assignee = {}
-            for r in filtered_rows:
+            for r in filtered:
                 a = (r.get("assignee") or "Unassigned").strip() or "Unassigned"
                 by_assignee[a] = by_assignee.get(a, 0) + 1
             if by_assignee:
-                chips = " ".join([f"<span class='pill'>{a}: {n}</span>" for a, n in by_assignee.items()])
+                chips = " ".join([f"<span class='pill'>{a}: {n}</span>" for a,n in by_assignee.items()])
                 st.markdown(chips, unsafe_allow_html=True)
+            st.write("")
 
-            st.write("")  # spacing
-
-            # Table-like expanders with controls
-            for r in filtered_rows:
-                row_cols = st.columns([0.04, 0.56, 0.2, 0.2])
+            for r in filtered:
+                row_cols = st.columns([0.6, 0.2, 0.2])
                 with row_cols[0]:
-                    if checkbox_id("", r["id"]):
-                        selected_ids.add(r["id"])
-                with row_cols[1]:
                     st.markdown(f"**{r['title']}**  \n_{r['org']}_")
-                with row_cols[2]:
+                with row_cols[1]:
                     st.markdown(f"**Deadline:** {r['deadline']}  \n**Status:** {r['status']}")
-                with row_cols[3]:
+                with row_cols[2]:
                     st.markdown(f"**Sector:** {r['sector']}  \n**Assignee:** {r.get('assignee','')}")
 
                 with st.expander("Details / Actions"):
@@ -730,15 +582,9 @@ with tab_tenders:
 
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
-                        if st.button("Generate EOI", key=f"eoi_{r['id']}"):
-                            with st.spinner("Generating EOI..."):
-                                path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
-                                if path:
-                                    r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
-                                    save_row(r)
-                                    st.success(f"Generated draft: {os.path.basename(path)}")
-                                    with open(path, "rb") as f:
-                                        st.download_button("📥 Download", f, file_name=os.path.basename(path), key=f"dl_{r['id']}_{len(r['drafts'])}")
+                        if st.button("Generate Draft Response", key=f"gen_{r['id']}"):
+                            d = new_draft_response_for_tender(r, kind="EOI")
+                            st.success(f"Draft created (v{d['version']}). Edit it in **Drafts** tab.")
                     with c2:
                         # Quick status
                         new_status = st.selectbox("Update Status", all_statuses, index=all_statuses.index(r.get("status","Draft")), key=f"ust_{r['id']}")
@@ -747,7 +593,6 @@ with tab_tenders:
                             save_row(r)
                             st.info("Status updated.")
                     with c3:
-                        # Quick score
                         new_score = st.slider("Fit Score", 0.0, 100.0, float(r.get("score") or 0.0), 1.0, key=f"scr_{r['id']}")
                         if new_score != r.get("score"):
                             r["score"] = float(new_score)
@@ -756,46 +601,31 @@ with tab_tenders:
                         if st.button("Delete", key=f"del_{r['id']}"):
                             delete_row(r["id"])
                             st.success("Tender deleted.")
-                            try:
-                                st.rerun()
-                            except Exception:
-                                st.experimental_rerun()
+                            try: st.rerun()
+                            except Exception: st.experimental_rerun()
         else:
             st.info("No tenders match the filters.")
 
-    # -------- KANBAN VIEW --------
+    # -------- Kanban --------
     with sub_kanban:
         cols = st.columns(5)
-        lanes = [
-            ("Draft", cols[0]),
-            ("Submitted", cols[1]),
-            ("Pending", cols[2]),
-            ("Won", cols[3]),
-            ("Lost", cols[4]),
-        ]
+        lanes = [("Draft", cols[0]), ("Submitted", cols[1]), ("Pending", cols[2]), ("Won", cols[3]), ("Lost", cols[4])]
         for status, col in lanes:
             with col:
                 st.markdown(f"**{status}**")
-                lane_items = [r for r in filtered_rows if r.get("status") == status]
-                if not lane_items:
-                    st.caption("—")
+                lane_items = [r for r in filtered if r.get("status")==status]
+                if not lane_items: st.caption("—")
                 for r in lane_items:
                     st.markdown(
                         f"<div class='card'><strong>{r['title']}</strong><br>"
-                        f"<span class='pill'>{r['sector']}</span> "
-                        f"<span class='pill'>Due: {r['deadline']}</span><br>"
-                        f"<small>{r.get('org','')}</small></div>",
-                        unsafe_allow_html=True
+                        f"<span class='pill'>{r['sector']}</span> <span class='pill'>Due: {r['deadline']}</span><br>"
+                        f"<small>{r.get('org','')}</small></div>", unsafe_allow_html=True
                     )
-                    # quick buttons
                     c1, c2 = st.columns(2)
                     with c1:
-                        if st.button("EOI", key=f"kan_eoi_{r['id']}"):
-                            path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
-                            if path:
-                                r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
-                                save_row(r)
-                                st.success("EOI generated.")
+                        if st.button("Draft Response", key=f"kgen_{r['id']}"):
+                            d = new_draft_response_for_tender(r, kind="EOI")
+                            st.success("Draft created. Edit it in Drafts.")
                     with c2:
                         nxt_opts = [s for s in ["Draft","Submitted","Pending","Won","Lost"] if s != status]
                         nxt = st.selectbox("Move to", nxt_opts, key=f"kan_mv_{r['id']}")
@@ -803,121 +633,221 @@ with tab_tenders:
                             r["status"] = nxt
                             save_row(r)
                             st.info(f"Moved to {nxt}")
-                            try:
-                                st.rerun()
-                            except Exception:
-                                st.experimental_rerun()
+                            try: st.rerun()
+                            except Exception: st.experimental_rerun()
 
-    # -------- CALENDAR VIEW --------
+    # -------- Calendar --------
     with sub_calendar:
-        if filtered_rows:
-            dfc = pd.DataFrame(filtered_rows)
+        if filtered:
+            dfc = pd.DataFrame(filtered)
             dfc["deadline_dt"] = pd.to_datetime(dfc["deadline"], errors="coerce")
             cal = alt.Chart(dfc.dropna(subset=["deadline_dt"])).mark_circle(size=110).encode(
                 x=alt.X("deadline_dt:T", title="Deadline"),
                 y=alt.Y("sector:N", title="Sector"),
                 color=alt.Color("status:N", scale=alt.Scale(scheme="category10")),
-                tooltip=["title", "org", "deadline", "status", "assignee"]
+                tooltip=["title","org","deadline","status","assignee"]
             ).properties(height=320)
             st.altair_chart(cal, use_container_width=True)
         else:
             st.info("Nothing to plot.")
 
-    # ---------- Execute Bulk Actions ----------
-    if run_bulk_status or run_bulk_eoi or export_csv:
-        # Determine selection from the checkboxes in List view (stored in session)
-        selected_ids = {int(k.split("_")[-1]) for k, v in st.session_state.items() if k.startswith("sel_") and v}
-        if not selected_ids and (run_bulk_status or run_bulk_eoi):
-            st.warning("Select at least one tender in List view first.")
-        else:
-            if run_bulk_status:
-                for r in rows:
-                    if r["id"] in selected_ids:
-                        r["status"] = bulk_status
-                        save_row(r)
-                st.success(f"Updated status to '{bulk_status}' for {len(selected_ids)} tender(s).")
-            if run_bulk_eoi:
-                cnt = 0
-                for r in rows:
-                    if r["id"] in selected_ids:
-                        path = write_docx(r, "EOI", version=len(r.get("drafts", [])) + 1)
-                        if path:
-                            r["drafts"] = r.get("drafts", []) + [{"type": "EOI", "file": path, "version": len(r.get("drafts", [])) + 1}]
-                            save_row(r)
-                            cnt += 1
-                st.success(f"Generated EOIs for {cnt} tender(s).")
-            if export_csv:
-                dfexp = pd.DataFrame(filtered_rows)
-                st.download_button("Download CSV", dfexp.to_csv(index=False).encode("utf-8"), file_name="tenders_filtered.csv", mime="text/csv")
-
-    st.markdown("---")
-
-    # ---------- Add New Tender ----------
-    st.markdown("### Add Tender")
-    with st.form("add_tender_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            title = st.text_input("Tender Title")
-            org = st.text_input("Organization")
-            sector = st.selectbox("Sector", ["Facilities Management", "Construction", "Energy", "Other"])
-        with c2:
-            deadline_dt = st.date_input("Deadline", value=datetime.today().date() + timedelta(days=14))
-            status = st.selectbox("Status", all_statuses, index=0)
-            assignee = st.text_input("Assignee Email", value="bids@tfml.ng")
-        description = st.text_area("Description")
-        submit_new = st.form_submit_button("Add Tender")
-        if submit_new:
-            new_id = max([r.get("id", 0) for r in rows], default=0) + 1
-            tender = {
-                "id": new_id, "title": title, "org": org, "sector": sector,
-                "deadline": deadline_dt.strftime("%Y-%m-%d"), "description": description,
-                "status": status, "score": 0.0, "assignee": assignee, "drafts": []
-            }
-            rows.append(tender)
-            save_row(tender)
-            st.success("Tender added!")
-
 # ======================================
-# DRAFTS
+# DRAFTS WORKSPACE
 # ======================================
 with tab_drafts:
-    st.markdown("### Drafts Library")
-    lib = []
+    st.markdown("### Drafts Workspace")
+
+    # Flatten drafts
+    draft_rows = []
     for r in rows:
-        for d in r.get("drafts", []):
-            lib.append({
-                "Tender": r.get("title"),
-                "Buyer": r.get("org"),
-                "Type": d.get("type"),
-                "File": d.get("file"),
-                "Version": d.get("version"),
-                "Status": r.get("status", "Draft"),
-                "Deadline": r.get("deadline")
+        for i, d in enumerate(r.get("drafts", [])):
+            draft_rows.append({
+                "DraftID": d.get("id") or f"{r['id']}:{i+1}",
+                "TenderID": r["id"],
+                "Tender": r.get("title",""),
+                "Buyer": r.get("org",""),
+                "Type": d.get("type","EOI"),
+                "Version": d.get("version",1),
+                "Status": d.get("status","Draft"),
+                "Value(₦)": d.get("value",""),
+                "To": d.get("to",""),
+                "CC": d.get("cc",""),
+                "Subject": d.get("subject",""),
+                "Last Updated": d.get("last_updated",""),
+                "_body": d.get("body",""),
+                "_file": d.get("file",""),
+                "_attachments": d.get("attachments",[])
             })
-    if not lib:
-        st.info("No drafts yet.")
+    df_drafts = pd.DataFrame(draft_rows)
+
+    # Metrics
+    if not df_drafts.empty:
+        total_value = 0.0
+        def _to_float(v):
+            try: return float(str(v).replace(",",""))
+            except: return 0.0
+        total_value = df_drafts["Value(₦)"].apply(_to_float).sum()
+        colm1, colm2, colm3 = st.columns(3)
+        with colm1:
+            st.markdown(f"<div class='kpi'><div class='label'>Total Drafts</div><div class='value'>{len(df_drafts)}</div><div class='sub'>All types</div></div>", unsafe_allow_html=True)
+        with colm2:
+            ready = (df_drafts["Status"]=="Ready").sum()
+            sent = (df_drafts["Status"]=="Sent").sum()
+            submitted = (df_drafts["Status"]=="Submitted").sum()
+            st.markdown(f"<div class='kpi'><div class='label'>Status</div><div class='value'>{ready} Ready</div><div class='sub'>{sent} Sent • {submitted} Submitted</div></div>", unsafe_allow_html=True)
+        with colm3:
+            st.markdown(f"<div class='kpi'><div class='label'>Total Value</div><div class='value'>₦{total_value:,.0f}</div><div class='sub'>Across drafts</div></div>", unsafe_allow_html=True)
+
+    # Filters + selection
+    colf1, colf2, colf3 = st.columns([0.45, 0.25, 0.3])
+    with colf1:
+        q = st.text_input("Search (Tender / Buyer / Subject)")
+    with colf2:
+        status_opts = ["Draft","Ready","Sent","Submitted"]
+        f_status = st.multiselect("Filter Status", status_opts, default=status_opts)
+    with colf3:
+        type_opts = ["EOI","Proposal"]
+        f_type = st.multiselect("Type", type_opts, default=type_opts)
+
+    def _match_draft(row):
+        t = f"{row['Tender']} {row['Buyer']} {row['Subject']}".lower()
+        if q and q.lower() not in t: return False
+        if row["Status"] not in f_status: return False
+        if row["Type"] not in f_type: return False
+        return True
+
+    if not df_drafts.empty:
+        view_df = df_drafts[df_drafts.apply(_match_draft, axis=1)].copy()
     else:
-        df_lib = pd.DataFrame(lib)
-        st.dataframe(df_lib, use_container_width=True, hide_index=True)
-        for draft in lib:
-            if st.button(f"Email {draft['File']}", key=f"email_{draft['File']}"):
-                send_email(st.session_state.get("bid_email", "bids@tfml.ng"),
-                           f"EOI: {draft['Tender']}",
-                           "Please review the attached EOI.",
-                           draft['File'])
-                st.success(f"Email sent for {draft['File']}")
+        view_df = pd.DataFrame(columns=["DraftID","Tender","Buyer","Type","Version","Status","Value(₦)","To","CC","Subject","Last Updated"])
+
+    col_list, col_edit = st.columns([0.55, 0.45])
+
+    # -------- Left: list of drafts
+    with col_list:
+        if view_df.empty:
+            st.info("No drafts yet. Generate one from the Tenders page.")
+        else:
+            show_cols = ["DraftID","Tender","Buyer","Type","Version","Status","Value(₦)","To","Subject","Last Updated"]
+            st.dataframe(view_df[show_cols], use_container_width=True, hide_index=True)
+
+            # choose draft to edit
+            draft_ids = view_df["DraftID"].tolist()
+            selected_id = st.selectbox("Select a draft to edit", draft_ids)
+    # -------- Right: editor
+    with col_edit:
+        if not view_df.empty:
+            row = view_df[view_df["DraftID"]==selected_id].iloc[0]
+            # find original tender + draft references
+            t = next((r for r in rows if r["id"]==row["TenderID"]), None)
+            d_index = None
+            d_obj = None
+            if t:
+                for idx, d in enumerate(t.get("drafts", [])):
+                    if (d.get("id")==row["DraftID"]) or (d.get("version")==row["Version"]):
+                        d_index = idx; d_obj = d; break
+
+            st.markdown(f"#### Edit Draft — {row['Tender']} (v{row['Version']})")
+            with st.form("edit_draft_form"):
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    to = st.text_input("To (emails, comma-separated)", value=row["To"])
+                    cc = st.text_input("CC (comma-separated)", value=row["CC"])
+                    value_str = st.text_input("Contract Value (₦)", value=str(row["Value(₦)"]))
+                    status = st.selectbox("Status", ["Draft","Ready","Sent","Submitted"], index=["Draft","Ready","Sent","Submitted"].index(row["Status"]))
+                with col_b:
+                    subject = st.text_input("Subject", value=row["Subject"])
+                    draft_type = st.selectbox("Type", ["EOI","Proposal"], index=["EOI","Proposal"].index(row["Type"]))
+                    attach = st.file_uploader("Add attachment(s)", accept_multiple_files=True)
+
+                body = st.text_area("Body", value=row["_body"], height=280)
+
+                save = st.form_submit_button("💾 Save Changes")
+                if save:
+                    # validate emails
+                    if not validate_email_list(to) or not validate_email_list(cc):
+                        st.error("Please enter valid email addresses (comma-separated).")
+                    else:
+                        if t and d_obj is not None:
+                            d_obj.update({
+                                "to": to, "cc": cc, "value": value_str, "subject": subject,
+                                "type": draft_type, "body": body, "status": status,
+                                "last_updated": datetime.now().isoformat(timespec="seconds")
+                            })
+                            # save attachments to disk
+                            if attach:
+                                saved = []
+                                for f in attach:
+                                    savep = EOIS / f.name
+                                    with open(savep, "wb") as out:
+                                        out.write(f.read())
+                                    saved.append(str(savep))
+                                d_obj["attachments"] = list(set((d_obj.get("attachments") or []) + saved))
+                            save_row(t)
+                            st.success("Draft updated.")
+
+            # actions row
+            ca, cb, cc2, cd, ce = st.columns(5)
+            with ca:
+                if st.button("📥 Download DOCX"):
+                    filename_hint = f"{row['Tender']}_v{row['Version']}"
+                    file_path = write_docx_from_draft(d_obj, filename_hint)
+                    d_obj["file"] = file_path
+                    d_obj["last_updated"] = datetime.now().isoformat(timespec="seconds")
+                    save_row(t)
+                    with open(file_path, "rb") as f:
+                        st.download_button("Download file", f, file_name=Path(file_path).name, use_container_width=True)
+            with cb:
+                if st.button("🧬 Duplicate (Version +1)"):
+                    # clone draft with version bump
+                    new_ver = (max([d.get("version",0) for d in t.get("drafts",[])])+1) if t.get("drafts") else 1
+                    new_id = f"{t['id']}:{new_ver}"
+                    clone = dict(d_obj)
+                    clone["version"] = new_ver
+                    clone["id"] = new_id
+                    clone["status"] = "Draft"
+                    clone["file"] = ""
+                    clone["last_updated"] = datetime.now().isoformat(timespec="seconds")
+                    t["drafts"].append(clone)
+                    save_row(t)
+                    st.success(f"Duplicated as v{new_ver}.")
+                    try: st.rerun()
+                    except Exception: st.experimental_rerun()
+            with cc2:
+                if st.button("✅ Mark as Submitted"):
+                    d_obj["status"] = "Submitted"
+                    d_obj["last_updated"] = datetime.now().isoformat(timespec="seconds")
+                    save_row(t)
+                    st.success("Marked as Submitted.")
+            with cd:
+                if st.button("✉️ Send Email"):
+                    if not d_obj.get("to"):
+                        st.error("Enter a recipient email first.")
+                    else:
+                        send_email(d_obj.get("to"), d_obj.get("subject"), d_obj.get("body"), d_obj.get("attachments"), cc=d_obj.get("cc"))
+                        d_obj["status"] = "Sent"
+                        d_obj["last_updated"] = datetime.now().isoformat(timespec="seconds")
+                        save_row(t)
+            with ce:
+                if st.button("🗑️ Delete Draft"):
+                    if t and d_index is not None:
+                        t["drafts"].pop(d_index)
+                        save_row(t)
+                        st.warning("Draft deleted.")
+                        try: st.rerun()
+                        except Exception: st.experimental_rerun()
 
 # ======================================
 # SETTINGS
 # ======================================
 with tab_settings:
     st.markdown("### Settings")
-    st.session_state["default_recipient"] = st.text_input("Default Recipient", value=st.session_state.get("default_recipient", "Procurement Team"))
-    st.session_state["bid_email"] = st.text_input("Bid Office Email", value=st.session_state.get("bid_email", "bids@tfml.ng"))
-    st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone", "+234-XXX-XXXX"))
-    theme = st.selectbox("Theme", ["Light", "Dark"])
+    st.session_state["default_recipient"] = st.text_input("Default Recipient", value=st.session_state.get("default_recipient","Procurement Team"))
+    st.session_state["bid_email"] = st.text_input("Bid Office Email", value=st.session_state.get("bid_email","bids@tfml.ng"))
+    st.session_state["bid_phone"] = st.text_input("Bid Office Phone", value=st.session_state.get("bid_phone","+234-XXX-XXXX"))
+    theme = st.selectbox("Theme", ["Light","Dark"])
     if theme == "Dark":
         st.markdown("<script>document.body.classList.add('dark-mode');</script>", unsafe_allow_html=True)
     else:
         st.markdown("<script>document.body.classList.remove('dark-mode');</script>", unsafe_allow_html=True)
-    st.caption("Changes save automatically when generating drafts.")
+    st.caption("Changes save automatically.")
