@@ -1,11 +1,11 @@
-# TFML Agentic AI — Luxe Console (Tenders + Drafts Workspace)
-# -----------------------------------------------------------
-# - Tabs visible (light + dark)
-# - Executive Dashboard (KPIs, alerts, charts, activity)
-# - Tenders page: filters + List/Kanban/Calendar + "Generate Draft Response"
-# - Drafts page: list, edit window (To/CC/Subject/Value/Body), attachments, duplicate, submit, send
-# - Seeder: 6 realistic tenders with first draft
-# - Safe Streamlit usage (no key= on status messages)
+# TFML Agentic AI — Luxe Console (Full App)
+# -----------------------------------------
+# - Dashboard: KPIs, alerts, charts, activity
+# - Tenders: Filters + List/Kanban/Calendar + "Generate Draft Response"
+# - Drafts Workspace: list, rich editor, attachments, lifecycle
+# - Buttons styled for visibility (light & dark)
+# - No audio control in Drafts (uploader restricted to docs/images only)
+# - 6 seeded tenders with first drafts
 
 import os
 import re
@@ -19,7 +19,6 @@ import pandas as pd
 import altair as alt
 from docx import Document
 from PIL import Image
-import requests  # placeholder
 
 # ======================================
 # PATHS / CONFIG
@@ -38,8 +37,8 @@ LOGO_PATH = ASSETS / "tfml_logo.png"
 EOIS.mkdir(parents=True, exist_ok=True)
 LOGS.mkdir(parents=True, exist_ok=True)
 
-# Brand theme
-ACCENT = "#E60F18"      # TFML Red
+# Brand
+ACCENT = "#E60F18"
 CARD = "#FFFFFF"
 TEXT = "#000000"
 MUTED = "#555555"
@@ -55,20 +54,26 @@ st.set_page_config(
 )
 
 # ======================================
-# CSS
+# CSS (layout, tabs, buttons, uploader)
 # ======================================
 st.markdown(f"""
 <style>
-.stApp {{ background: {APP_BG_LIGHT}; color: {TEXT}; }}
+/* Base */
+.stApp {{ background:{APP_BG_LIGHT}; color:{TEXT}; }}
 .block-container {{ padding-top: 1rem; }}
+
+/* Header */
 .header {{ display:flex; align-items:center; gap:14px; padding:6px 0 14px; border-bottom:1px solid #ddd; }}
 .header .title {{ font-weight:900; font-size:26px; color:{ACCENT}; letter-spacing:.2px; }}
+
+/* Cards & Pills */
 .kpi {{ background:{CARD}; border:1px solid #ddd; border-radius:14px; padding:16px; color:{TEXT}; }}
 .kpi .label {{ color:{MUTED}; font-size:.78rem; text-transform:uppercase; letter-spacing:1px; }}
 .kpi .value {{ font-size:1.8rem; font-weight:800; color:{ACCENT}; }}
 .card {{ background:{CARD}; border:1px solid #ddd; border-radius:14px; padding:16px; color:{TEXT}; }}
 .pill {{ display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; font-weight:700; background:#eee; color:{ACCENT}; border:1px solid {ACCENT}; }}
 
+/* Tabs */
 .stTabs [role="tablist"] {{ gap:8px; border-bottom:0; margin-bottom:.5rem; }}
 .stTabs [role="tab"] {{
   padding:10px 16px; border:1px solid #ddd; background:#fff; color:#000;
@@ -76,6 +81,7 @@ st.markdown(f"""
 }}
 .stTabs [role="tab"][aria-selected="true"] {{ background:{ACCENT}; color:#fff; border-color:{ACCENT}; }}
 
+/* Dark Mode */
 .dark-mode .stApp {{ background:{APP_BG_DARK}; color:#fff; }}
 .dark-mode .kpi, .dark-mode .card {{ background:{CARD_DARK}; border-color:#444; color:#fff; }}
 .dark-mode .header .title {{ color:#fff; }}
@@ -83,8 +89,66 @@ st.markdown(f"""
 .dark-mode .stTabs [role="tab"] {{ background:{CARD_DARK}; border-color:#444; color:#fff; }}
 .dark-mode .stTabs [role="tab"][aria-selected="true"] {{ background:{ACCENT}; border-color:{ACCENT}; color:#fff; }}
 
+/* Buttons: visible text in light/dark, hover & disabled */
+:root {{
+  --tfml-btn-bg: {ACCENT};
+  --tfml-btn-bg-hover: #c40e15;
+  --tfml-btn-text: #ffffff;
+  --tfml-btn-border: #9f0a10;
+}}
+.stButton > button,
+.stDownloadButton > button,
+form [data-testid="baseButton-secondary"],
+form [data-testid="baseButton-primary"] {{
+  background: var(--tfml-btn-bg) !important;
+  color: var(--tfml-btn-text) !important;
+  border: 1px solid var(--tfml-btn-border) !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}}
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+form [data-testid="baseButton-secondary"]:hover,
+form [data-testid="baseButton-primary"]:hover {{
+  background: var(--tfml-btn-bg-hover) !important;
+  border-color: var(--tfml-btn-bg-hover) !important;
+}}
+.stButton > button:disabled,
+.stDownloadButton > button:disabled,
+form [data-testid="baseButton-secondary"]:disabled,
+form [data-testid="baseButton-primary"]:disabled {{
+  opacity: .6 !important;
+  color: #ffffff !important;
+}}
+.dark-mode .stButton > button,
+.dark-mode .stDownloadButton > button,
+.dark-mode form [data-testid="baseButton-secondary"],
+.dark-mode form [data-testid="baseButton-primary"] {{
+  background: var(--tfml-btn-bg) !important;
+  color: #ffffff !important;
+  border-color: var(--tfml-btn-border) !important;
+}}
+
+/* File uploader: style button and hide media-capture affordances */
+[data-testid="stFileUploaderDropzone"] + div button,
+[data-testid="stFileUploader"] button {{
+  background: var(--tfml-btn-bg) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--tfml-btn-border) !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+}}
+[data-testid="stFileUploaderDropzone"] + div button:hover,
+[data-testid="stFileUploader"] button:hover {{
+  background: var(--tfml-btn-bg-hover) !important;
+  border-color: var(--tfml-btn-bg-hover) !important;
+}}
+
 @media (max-width: 600px) {{
-  .kpi {{ padding:10px; }} .kpi .value {{ font-size:1.4rem; }} .header .title {{ font-size:20px; }}
+  .kpi {{ padding:10px; }}
+  .kpi .value {{ font-size:1.4rem; }}
+  .header .title {{ font-size:20px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -196,10 +260,9 @@ def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
     path = EOIS / f"{safe_fn}.docx"
     doc = Document()
     doc.add_heading(draft.get("subject", "Draft Response"), level=1)
-    to_line = f"To: {draft.get('to','')}"
-    cc_line = f"CC: {draft.get('cc','')}"
-    val_line = f"Contract Value (₦): {draft.get('value','')}"
-    for meta in (to_line, cc_line, val_line):
+    for meta in (f"To: {draft.get('to','')}",
+                 f"CC: {draft.get('cc','')}",
+                 f"Contract Value (₦): {draft.get('value','')}"):
         doc.add_paragraph(meta)
     doc.add_paragraph("")  # spacer
     body = draft.get("body") or "—"
@@ -207,22 +270,6 @@ def write_docx_from_draft(draft: dict, filename_hint: str) -> str:
         doc.add_paragraph(line)
     doc.save(path)
     return str(path)
-
-def write_docx(tender, doc_kind="EOI", version=1):
-    safe_title = tender.get("title", "Untitled")[:60].replace(" ", "_")
-    fpath = EOIS / f"{safe_title}_{doc_kind}_v{version}.docx"
-    doc = Document()
-    doc.add_heading(f"{doc_kind} Draft (v{version})", level=1)
-    body = EOI_TMPL.format(
-        recipient=tender.get("recipient", st.session_state.get("default_recipient", "Procurement Team")),
-        title=tender.get("title", "Untitled"),
-        sector_desc=tender.get("sector", "Facilities Management").lower(),
-        summary=tender.get("description", "—"),
-    )
-    for line in body.split("\n"):
-        doc.add_paragraph(line)
-    doc.save(fpath)
-    return str(fpath)
 
 def ai_summarize(description):
     return f"Summary: {description[:180]}..."  # placeholder for real LLM
@@ -257,36 +304,33 @@ def seed_sample_data_if_empty():
             "description": desc, "status": status, "score": 0.0,
             "assignee": assignee, "drafts": []
         }
-        # Initial draft response (email-style)
-        to_email = _suggest_email(org)
-        initial_draft = {
+        # Initial draft response
+        initial = {
             "id": f"{i}:1",
             "type": "EOI",
             "version": 1,
-            "status": "Draft",
-            "to": to_email,
+            "status": "Draft",          # Draft -> Ready -> Sent -> Submitted
+            "to": _suggest_email(org),
             "cc": "bids@tfml.ng",
             "subject": f"Expression of Interest — {title}",
             "value": "",
             "body": EOI_TMPL.format(
-                recipient="Procurement Team",
-                title=title,
-                sector_desc=sector.lower(),
-                summary=desc
+                recipient="Procurement Team", title=title,
+                sector_desc=sector.lower(), summary=desc
             ),
             "attachments": [],
-            "file": "",  # will fill on download
+            "file": "",
             "last_updated": datetime.now().isoformat(timespec="seconds")
         }
-        tender["drafts"] = [initial_draft]
+        tender["drafts"] = [initial]
         save_row(tender)
+
     return load_rows()
 
 # ======================================
-# FAKE EMAIL SENDER
+# FAKE EMAIL SENDER (placeholder)
 # ======================================
 def send_email(recipient, subject, body, attachment_paths=None, cc=None):
-    # integrate SMTP later; for now, simulate success
     cc_text = f" (cc: {cc})" if cc else ""
     st.success(f"Email queued to **{recipient}**{cc_text} with subject **{subject}**.")
 
@@ -318,7 +362,6 @@ def render_deadline_notices(rows, days=3):
         d = _safe_date(r.get("deadline"))
         if d and d <= soon:
             st.warning(f"⚠️ Tender '{r.get('title','Untitled')}' is due on {d.strftime('%Y-%m-%d')}!")
-
 render_deadline_notices(rows, days=3)
 
 # ======================================
@@ -428,7 +471,7 @@ with tab_dash:
     with c3: st.markdown(f"<div class='kpi'><div class='label'>Due in 3 days</div><div class='value'>{m['due3']}</div><div class='sub'>Immediate action</div></div>", unsafe_allow_html=True)
     with c4: st.markdown(f"<div class='kpi'><div class='label'>Due in 7 days</div><div class='value'>{m['due7']}</div><div class='sub'>Upcoming</div></div>", unsafe_allow_html=True)
     with c5: st.markdown(f"<div class='kpi'><div class='label'>In Flight</div><div class='value'>{m['inflight']}</div><div class='sub'>Submitted/Pending</div></div>", unsafe_allow_html=True)
-    with c6: st.markdown(f"<div class='kpi'><div class='label'>Win rate</div><div class='value'>{m['win_rate']}%</div><div class='sub'>Awards: {m['awarded'] if 'awarded' in m else ''}</div></div>", unsafe_allow_html=True)
+    with c6: st.markdown(f"<div class='kpi'><div class='label'>Win rate</div><div class='value'>{m['win_rate']}%</div><div class='sub'>Awards</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     left, right = st.columns([0.6, 0.4])
@@ -496,7 +539,9 @@ with tab_dash:
         soon = []
         for r in rows:
             d = _safe_date(r.get("deadline"))
-            if d: soon.append({"Deadline": d.strftime("%Y-%m-%d"), "Title": r.get("title",""), "Status": r.get("status",""), "Assignee": r.get("assignee","")})
+            if d:
+                soon.append({"Deadline": d.strftime("%Y-%m-%d"), "Title": r.get("title",""),
+                             "Status": r.get("status",""), "Assignee": r.get("assignee","")})
         soon = sorted(soon, key=lambda x: x["Deadline"])[:10]
         if soon:
             st.dataframe(pd.DataFrame(soon), use_container_width=True, hide_index=True)
@@ -552,13 +597,11 @@ with tab_tenders:
         return (search.lower() in t) and (r.get("status") in status_filter) and (r.get("sector") in sector_filter) and in_range
     filtered = [r for r in filtered if _match(r)]
 
-    # Sub-views
     sub_list, sub_kanban, sub_calendar = st.tabs(["List", "Kanban", "Calendar"])
 
     # -------- List View --------
     with sub_list:
         if filtered:
-            # Chips by assignee
             by_assignee = {}
             for r in filtered:
                 a = (r.get("assignee") or "Unassigned").strip() or "Unassigned"
@@ -586,7 +629,6 @@ with tab_tenders:
                             d = new_draft_response_for_tender(r, kind="EOI")
                             st.success(f"Draft created (v{d['version']}). Edit it in **Drafts** tab.")
                     with c2:
-                        # Quick status
                         new_status = st.selectbox("Update Status", all_statuses, index=all_statuses.index(r.get("status","Draft")), key=f"ust_{r['id']}")
                         if new_status != r.get("status"):
                             r["status"] = new_status
@@ -682,7 +724,6 @@ with tab_drafts:
 
     # Metrics
     if not df_drafts.empty:
-        total_value = 0.0
         def _to_float(v):
             try: return float(str(v).replace(",",""))
             except: return 0.0
@@ -730,15 +771,13 @@ with tab_drafts:
         else:
             show_cols = ["DraftID","Tender","Buyer","Type","Version","Status","Value(₦)","To","Subject","Last Updated"]
             st.dataframe(view_df[show_cols], use_container_width=True, hide_index=True)
-
-            # choose draft to edit
             draft_ids = view_df["DraftID"].tolist()
             selected_id = st.selectbox("Select a draft to edit", draft_ids)
+
     # -------- Right: editor
     with col_edit:
         if not view_df.empty:
             row = view_df[view_df["DraftID"]==selected_id].iloc[0]
-            # find original tender + draft references
             t = next((r for r in rows if r["id"]==row["TenderID"]), None)
             d_index = None
             d_obj = None
@@ -754,17 +793,22 @@ with tab_drafts:
                     to = st.text_input("To (emails, comma-separated)", value=row["To"])
                     cc = st.text_input("CC (comma-separated)", value=row["CC"])
                     value_str = st.text_input("Contract Value (₦)", value=str(row["Value(₦)"]))
-                    status = st.selectbox("Status", ["Draft","Ready","Sent","Submitted"], index=["Draft","Ready","Sent","Submitted"].index(row["Status"]))
+                    status = st.selectbox("Status", ["Draft","Ready","Sent","Submitted"],
+                                          index=["Draft","Ready","Sent","Submitted"].index(row["Status"]))
                 with col_b:
                     subject = st.text_input("Subject", value=row["Subject"])
                     draft_type = st.selectbox("Type", ["EOI","Proposal"], index=["EOI","Proposal"].index(row["Type"]))
-                    attach = st.file_uploader("Add attachment(s)", accept_multiple_files=True)
+                    # Restrict to common doc/image types to avoid audio control
+                    attach = st.file_uploader(
+                        "Add attachment(s)",
+                        accept_multiple_files=True,
+                        type=["pdf","doc","docx","ppt","pptx","xls","xlsx","csv","txt","rtf","zip","png","jpg","jpeg"]
+                    )
 
                 body = st.text_area("Body", value=row["_body"], height=280)
 
                 save = st.form_submit_button("💾 Save Changes")
                 if save:
-                    # validate emails
                     if not validate_email_list(to) or not validate_email_list(cc):
                         st.error("Please enter valid email addresses (comma-separated).")
                     else:
@@ -774,7 +818,7 @@ with tab_drafts:
                                 "type": draft_type, "body": body, "status": status,
                                 "last_updated": datetime.now().isoformat(timespec="seconds")
                             })
-                            # save attachments to disk
+                            # Save attachments
                             if attach:
                                 saved = []
                                 for f in attach:
@@ -799,7 +843,6 @@ with tab_drafts:
                         st.download_button("Download file", f, file_name=Path(file_path).name, use_container_width=True)
             with cb:
                 if st.button("🧬 Duplicate (Version +1)"):
-                    # clone draft with version bump
                     new_ver = (max([d.get("version",0) for d in t.get("drafts",[])])+1) if t.get("drafts") else 1
                     new_id = f"{t['id']}:{new_ver}"
                     clone = dict(d_obj)
@@ -824,7 +867,8 @@ with tab_drafts:
                     if not d_obj.get("to"):
                         st.error("Enter a recipient email first.")
                     else:
-                        send_email(d_obj.get("to"), d_obj.get("subject"), d_obj.get("body"), d_obj.get("attachments"), cc=d_obj.get("cc"))
+                        send_email(d_obj.get("to"), d_obj.get("subject"), d_obj.get("body"),
+                                   d_obj.get("attachments"), cc=d_obj.get("cc"))
                         d_obj["status"] = "Sent"
                         d_obj["last_updated"] = datetime.now().isoformat(timespec="seconds")
                         save_row(t)
